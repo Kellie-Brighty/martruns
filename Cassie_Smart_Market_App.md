@@ -1,4 +1,3 @@
-
 # 🧠 Project Overview: Cassie's Smart Market Assistant
 
 **Working Title:** _SmartBasket_ (or customizable)
@@ -44,21 +43,21 @@ It is **built with extensibility in mind**, so other chefs can create their own 
 
 ### 1. ✍️ Pre-Market Planning
 - Create new market run (title + optional schedule)
-- Add items manually or via voice (e.g., “Add tomatoes and Maggi”)
+- Add items manually or via voice (e.g., "Add tomatoes and Maggi")
 - Smart suggestions from past runs
 - Set budget estimates per item
-- Set reminders (e.g., “Remind me by 7AM tomorrow”)
+- Set reminders (e.g., "Remind me by 7AM tomorrow")
 
 ### 2. 🛒 In-Market Interaction
-- Interactive checklist UI (swipe/tap or voice: “I’ve bought onions”)
+- Interactive checklist UI (swipe/tap or voice: "I've bought onions")
 - Real-time price entry (voice or touch)
-- Note-taking for vendor or quality (“Save this fish vendor”)
+- Note-taking for vendor or quality ("Save this fish vendor")
 - Offline-first design (auto-sync when online)
 
 ### 3. 📊 Post-Market Summary
 - Show total estimated vs actual spend
 - Auto-save lists for reuse
-- Simple feedback/logging: “This market run was smooth”
+- Simple feedback/logging: "This market run was smooth"
 - Suggest items to reduce (based on leftovers logged)
 
 ---
@@ -67,11 +66,11 @@ It is **built with extensibility in mind**, so other chefs can create their own 
 
 | Voice Example | Action |
 |---------------|--------|
-| “I want to go to the market today” | Starts new market run |
-| “Add carrots and beef” | Adds to current list |
-| “Remind me at 6AM” | Sets notification |
-| “I’ve bought rice” | Marks as done |
-| “End this run” | Finalizes and shows summary |
+| "I want to go to the market today" | Starts new market run |
+| "Add carrots and beef" | Adds to current list |
+| "Remind me at 6AM" | Sets notification |
+| "I've bought rice" | Marks as done |
+| "End this run" | Finalizes and shows summary |
 
 ---
 
@@ -88,7 +87,7 @@ It is **built with extensibility in mind**, so other chefs can create their own 
 - Mobile-first UI (touch-friendly)
 - Friendly tone (human, gentle prompts)
 - Dark mode & accessibility-aware
-- “Assistant” component that animates/helps when voice is triggered
+- "Assistant" component that animates/helps when voice is triggered
 
 ---
 

@@ -1,25 +1,19 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 import {
   ChefHat,
   Mic,
   MicOff,
-  
   ArrowRight,
-  
   ChevronLeft,
   Check,
-  
   Volume2,
-  
   Apple,
-  
   CheckSquare,
   Utensils,
   Carrot,
-  
   Fish,
-  
   VolumeX,
 } from "lucide-react";
 
@@ -48,9 +42,11 @@ interface OnboardingState {
 
 const Onboarding: React.FC = () => {
   const navigate = useNavigate();
+  const { currentUser, updateUserProfile } = useAuth();
   const audioRef = useRef<HTMLAudioElement>(null);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [audioLoaded, setAudioLoaded] = useState(false);
+  const [isCompletingOnboarding, setIsCompletingOnboarding] = useState(false);
 
   const [onboardingState, setOnboardingState] = useState<OnboardingState>({
     currentStep: 0,
@@ -79,7 +75,7 @@ const Onboarding: React.FC = () => {
 
   const stepMessages = [
     [
-      "Welcome to CartRuns! 🍳",
+      "Welcome to MartRuns! 🍳",
       "Built for chefs",
       "Streamline your shopping",
       "Let's get started",
@@ -128,7 +124,7 @@ const Onboarding: React.FC = () => {
       id: "cassie",
       label: "I'm Cassie!",
       icon: "⭐",
-      description: "The original CartRuns user",
+      description: "The original MartRuns user",
     },
   ];
 
@@ -233,9 +229,9 @@ const Onboarding: React.FC = () => {
     if (onboardingState.currentStep >= onboardingState.totalSteps) {
       console.log("Already at final step, completing onboarding");
       // Complete onboarding if we're already at the last step
-      localStorage.setItem("cartRuns_onboarded", "true");
+      localStorage.setItem("martRuns_onboarded", "true");
       localStorage.setItem(
-        "cartRuns_userProfile",
+        "martRuns_userProfile",
         JSON.stringify(onboardingState.userProfile)
       );
       navigate("/dashboard");
@@ -353,6 +349,58 @@ const Onboarding: React.FC = () => {
       (onboardingState.currentStep / (onboardingState.totalSteps - 1)) * 100
     );
   };
+
+  // Add the Firebase completion function with loading state
+  const completeOnboarding = useCallback(async () => {
+    if (!currentUser) {
+      console.error("No authenticated user found");
+      return;
+    }
+
+    setIsCompletingOnboarding(true);
+
+    try {
+      // Use onboarding name if provided, otherwise fall back to Google display name
+      const finalDisplayName =
+        onboardingState.userProfile.name.trim() ||
+        currentUser.displayName ||
+        "Chef";
+
+      // Prepare user profile data for Firebase
+      const profileData = {
+        email: currentUser.email || "",
+        displayName: finalDisplayName,
+        photoURL: currentUser.photoURL || undefined,
+        name: onboardingState.userProfile.name.trim() || finalDisplayName,
+        experience: onboardingState.userProfile.experience,
+        voiceEnabled: onboardingState.userProfile.voiceEnabled,
+        onboardingCompleted: true,
+      };
+
+      // Sync to Firebase
+      await updateUserProfile(profileData);
+
+      // Keep localStorage for backward compatibility during transition
+      localStorage.setItem("martRuns_onboarded", "true");
+      localStorage.setItem(
+        "martRuns_userProfile",
+        JSON.stringify(onboardingState.userProfile)
+      );
+
+      navigate("/dashboard");
+    } catch (error) {
+      console.error("Error completing onboarding:", error);
+      // Fallback to localStorage only
+      localStorage.setItem("martRuns_onboarded", "true");
+      localStorage.setItem(
+        "martRuns_userProfile",
+        JSON.stringify(onboardingState.userProfile)
+      );
+      navigate("/dashboard");
+    } finally {
+      setIsCompletingOnboarding(false);
+    }
+  }, [currentUser, onboardingState.userProfile, updateUserProfile, navigate]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-gray-950 to-slate-900 text-white overflow-hidden relative">
@@ -539,7 +587,7 @@ const Onboarding: React.FC = () => {
             <div className="space-y-8 animate-slide-up">
               <div className="text-center space-y-6">
                 <h1 className="text-6xl sm:text-7xl font-display text-transparent bg-gradient-to-r from-emerald-400 via-teal-400 to-orange-400 bg-clip-text mb-6">
-                  CartRuns
+                  MartRuns
                 </h1>
                 <p className="text-slate-300 font-body text-lg leading-relaxed max-w-md mx-auto">
                   Professional market run management designed for culinary
@@ -570,6 +618,16 @@ const Onboarding: React.FC = () => {
                   onKeyPress={(e) => e.key === "Enter" && handleNameSubmit()}
                   autoFocus
                 />
+
+                <p className="text-center text-sm text-slate-400 font-body">
+                  This will be your display name in the app
+                  {!userName.trim() && currentUser?.displayName && (
+                    <span className="block mt-1">
+                      Or we'll use "{currentUser.displayName}" from your Google
+                      account
+                    </span>
+                  )}
+                </p>
 
                 <div className="grid grid-cols-2 gap-4">
                   {experienceOptions.map((option) => (
@@ -725,19 +783,21 @@ const Onboarding: React.FC = () => {
               </div>
 
               <button
-                onClick={() => {
-                  // Complete onboarding directly
-                  localStorage.setItem("cartRuns_onboarded", "true");
-                  localStorage.setItem(
-                    "cartRuns_userProfile",
-                    JSON.stringify(onboardingState.userProfile)
-                  );
-                  navigate("/dashboard");
-                }}
-                className="btn-primary w-full flex items-center justify-center group text-lg font-semibold-body tracking-wide"
+                onClick={completeOnboarding}
+                disabled={isCompletingOnboarding}
+                className="btn-primary w-full flex items-center justify-center group text-lg font-semibold-body tracking-wide disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span>Start Shopping</span>
-                <ArrowRight className="w-5 h-5 ml-3 group-hover:translate-x-1 transition-transform" />
+                {isCompletingOnboarding ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-3"></div>
+                    <span>Setting up your account...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Start Shopping</span>
+                    <ArrowRight className="w-5 h-5 ml-3 group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
               </button>
             </div>
           )}
@@ -747,7 +807,7 @@ const Onboarding: React.FC = () => {
         {onboardingState.currentStep > 0 && onboardingState.currentStep < 4 && (
           <button
             onClick={() => {
-              localStorage.setItem("cartRuns_onboarded", "true");
+              localStorage.setItem("martRuns_onboarded", "true");
               navigate("/dashboard");
             }}
             className="mt-12 text-slate-400 hover:text-white transition-colors text-sm font-medium-body tracking-wide hover:underline underline-offset-4"

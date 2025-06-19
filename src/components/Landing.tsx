@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import { LoadingSpinner } from "./LoadingSpinner";
 import {
   ShoppingCart,
   Sparkles,
@@ -17,14 +19,18 @@ import {
   Zap,
   Heart,
   Play,
+  
 } from "lucide-react";
 
 const Landing: React.FC = () => {
   const navigate = useNavigate();
+  const { login, currentUser, userProfile, loading: authLoading } = useAuth();
   const [isLoaded, setIsLoaded] = useState(false);
   const [hoveredFeature, setHoveredFeature] = useState<number | null>(null);
   const [aiSpeaking, setAiSpeaking] = useState(false);
   const [currentMessage, setCurrentMessage] = useState(0);
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  // const [currentFeature, setCurrentFeature] = useState(0);
 
   const aiMessages = [
     "Hi! I'm Cassie's AI Kitchen Assistant 🧠",
@@ -71,17 +77,33 @@ const Landing: React.FC = () => {
     return () => clearInterval(messageInterval);
   }, []);
 
-  const handleGoogleSignIn = () => {
-    // TODO: Implement Firebase Google Auth
-    console.log("Google Sign In clicked");
+  useEffect(() => {
+    if (currentUser && userProfile) {
+      if (userProfile.onboardingCompleted) {
+        navigate("/dashboard");
+      } else {
+        navigate("/onboarding");
+      }
+    }
+  }, [currentUser, userProfile, navigate]);
 
-    // Check if user has completed onboarding
-    const isOnboarded = localStorage.getItem("cartRuns_onboarded") === "true";
+  const handleGoogleSignIn = async () => {
+    if (isSigningIn) return;
 
-    if (isOnboarded) {
-      navigate("/dashboard");
-    } else {
-      navigate("/onboarding");
+    setIsSigningIn(true);
+    try {
+      const { isNewUser } = await login();
+
+      if (isNewUser) {
+        navigate("/onboarding");
+      } else {
+        navigate("/dashboard");
+      }
+    } catch (error) {
+      console.error("Sign-in error:", error);
+      // You might want to show an error message to the user here
+    } finally {
+      setIsSigningIn(false);
     }
   };
 
@@ -89,6 +111,14 @@ const Landing: React.FC = () => {
     setAiSpeaking(true);
     setTimeout(() => setAiSpeaking(false), 2000);
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-gray-950 to-slate-900 flex items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-dark-950 text-white overflow-hidden font-futuristic relative">
@@ -134,7 +164,7 @@ const Landing: React.FC = () => {
             </div>
             <div>
               <h1 className="text-lg sm:text-2xl font-bold text-gradient-rainbow font-cyber">
-                CartRuns
+                MartRuns
               </h1>
               <p className="text-xs text-dark-400 font-sleek hidden sm:block">
                 Smart Market Assistant
@@ -162,11 +192,21 @@ const Landing: React.FC = () => {
 
             <button
               onClick={handleGoogleSignIn}
+              disabled={isSigningIn}
               className="btn-primary flex items-center justify-center space-x-1 sm:space-x-2 group text-sm sm:text-base"
             >
-              <span className="hidden sm:inline">Sign in with Google</span>
-              <span className="sm:hidden">Sign In</span>
-              <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 group-hover:translate-x-1 transition-transform" />
+              {isSigningIn ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
+                  <span>Signing in...</span>
+                </>
+              ) : (
+                <>
+                  <span className="hidden sm:inline">Sign in with Google</span>
+                  <span className="sm:hidden">Sign In</span>
+                  <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -221,10 +261,20 @@ const Landing: React.FC = () => {
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
               <button
                 onClick={handleGoogleSignIn}
+                disabled={isSigningIn}
                 className="btn-primary text-base sm:text-lg px-6 sm:px-8 py-3 sm:py-4 group flex items-center justify-center"
               >
-                <span>Get Started</span>
-                <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+                {isSigningIn ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Starting Your Journey...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Start Your Journey</span>
+                    <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
               </button>
 
               <button
@@ -444,7 +494,7 @@ const Landing: React.FC = () => {
                 <ShoppingCart className="w-4 h-4 text-white" />
               </div>
               <span className="text-gradient-rainbow font-cyber font-semibold">
-                CartRuns
+                MartRuns
               </span>
             </div>
 
@@ -460,7 +510,7 @@ const Landing: React.FC = () => {
                 <span className="text-secondary-400 font-semibold"> Kelly</span>
               </p>
               <p className="text-xs text-dark-500 mt-1">
-                © 2024 CartRuns. Revolutionizing kitchen management.
+                © 2024 MartRuns. Revolutionizing kitchen management.
               </p>
             </div>
           </div>
