@@ -1,6 +1,6 @@
 # 🧠 Project Overview: Cassie's Smart Market Assistant
 
-**Working Title:** _SmartBasket_ (or customizable)
+**Working Title:** _MartRuns_ (or customizable)
 
 ## 📘 Project Description
 
@@ -42,6 +42,7 @@ It is **built with extensibility in mind**, so other chefs can create their own 
 ## 🧩 Main Features (Grouped by Experience Flow)
 
 ### 1. ✍️ Pre-Market Planning
+
 - Create new market run (title + optional schedule)
 - Add items manually or via voice (e.g., "Add tomatoes and Maggi")
 - Smart suggestions from past runs
@@ -49,12 +50,14 @@ It is **built with extensibility in mind**, so other chefs can create their own 
 - Set reminders (e.g., "Remind me by 7AM tomorrow")
 
 ### 2. 🛒 In-Market Interaction
+
 - Interactive checklist UI (swipe/tap or voice: "I've bought onions")
 - Real-time price entry (voice or touch)
 - Note-taking for vendor or quality ("Save this fish vendor")
 - Offline-first design (auto-sync when online)
 
 ### 3. 📊 Post-Market Summary
+
 - Show total estimated vs actual spend
 - Auto-save lists for reuse
 - Simple feedback/logging: "This market run was smooth"
@@ -64,21 +67,64 @@ It is **built with extensibility in mind**, so other chefs can create their own 
 
 ## 🔊 Voice UI Breakdown
 
-| Voice Example | Action |
-|---------------|--------|
-| "I want to go to the market today" | Starts new market run |
-| "Add carrots and beef" | Adds to current list |
-| "Remind me at 6AM" | Sets notification |
-| "I've bought rice" | Marks as done |
-| "End this run" | Finalizes and shows summary |
+| Voice Example                      | Action                      |
+| ---------------------------------- | --------------------------- |
+| "I want to go to the market today" | Starts new market run       |
+| "Add carrots and beef"             | Adds to current list        |
+| "Remind me at 6AM"                 | Sets notification           |
+| "I've bought rice"                 | Marks as done               |
+| "End this run"                     | Finalizes and shows summary |
 
 ---
 
 ## 🧠 Smart Features (Future Enhancements)
+
 - Predict frequently forgotten items
 - Price trend warnings
 - Meal-based list generation (optional link)
 - Export to PDF or share with assistants
+
+---
+
+## 🏠 Future Home Page Enhancement Plan
+
+### Enhanced Dashboard Experience
+
+Create an immersive home page interface that makes chefs feel inspired and informed:
+
+#### 🗣️ Daily Chef Inspiration
+
+- **Daily Chef Quotes**: Rotating collection of motivational culinary quotes
+- **Cooking Tips**: Professional chef wisdom and market insights
+- **Seasonal Reminders**: What's fresh this time of year
+
+#### 📈 Market Run Analytics
+
+- **Today's Progress**: Visual dashboard showing today's market runs and completion status
+- **Weekly Overview**: Chart showing market runs per day over the past week
+- **Monthly Trends**: Spending patterns and shopping frequency insights
+- **Achievement Streaks**: Consecutive days with successful market runs
+
+#### 🕐 Historical Journey
+
+- **Previous Runs Gallery**: Interactive timeline of past market runs with photos and notes
+- **Favorite Vendors**: Quick access to frequently visited market stalls
+- **Shopping Patterns**: Visual insights into most purchased items and categories
+- **Success Metrics**: Total money saved, items purchased, and efficiency improvements
+
+#### 🎯 Smart Recommendations
+
+- **Suggested Lists**: Based on shopping history and seasonal availability
+- **Budget Optimization**: Recommendations for better spending
+- **Time Efficiency**: Optimal market routes and timing suggestions
+
+#### 🏆 Gamification Elements
+
+- **Chef Level System**: Progress from Novice to Master Chef based on completed runs
+- **Market Mastery Badges**: Achievements for consistency, savings, and efficiency
+- **Weekly Challenges**: Fun goals like "Try 3 new vendors this week"
+
+This enhanced home experience will make every visit to MartRuns feel rewarding and motivating for professional chefs.
 
 ---
 
@@ -93,11 +139,12 @@ It is **built with extensibility in mind**, so other chefs can create their own 
 
 ## 🧪 MVP Milestone Checklist
 
-1. [ ] Auth + onboarding screen (multiple chefs support)
-2. [ ] Market run creation (manual + voice input)
-3. [ ] Checklist UI
-4. [ ] Voice-to-text parser (basic Web Speech API)
-5. [ ] Reminders + vendor notes
-6. [ ] Post-run summary
+1. [x] Auth + onboarding screen (multiple chefs support)
+2. [x] Market run creation (manual + voice input)
+3. [x] Checklist UI
+4. [x] Voice-to-text parser (basic Web Speech API)
+5. [x] Reminders + vendor notes
+6. [x] Post-run summary
 7. [ ] PWA setup + offline handling
 8. [ ] Smart suggestion engine (phase 2)
+9. [ ] Enhanced Home Page Dashboard (future plan)

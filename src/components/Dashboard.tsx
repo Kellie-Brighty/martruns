@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   Mic,
   Plus,
@@ -14,346 +14,613 @@ import {
   DollarSign,
   Target,
   Award,
+  AlertCircle,
+  RefreshCw,
+  Globe,
+  ChevronDown,
+  Trophy,
+  Star,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-
-interface MarketItem {
-  id: string;
-  name: string;
-  estimated_price?: number;
-  actual_price?: number;
-  completed: boolean;
-  category: string;
-}
-
-interface MarketRun {
-  id: string;
-  title: string;
-  date: string;
-  items: MarketItem[];
-  status: "planning" | "shopping" | "completed";
-}
+import { useAuth } from "../contexts/AuthContext";
+import { useMarketRuns } from "../hooks/useMarketRuns";
+import type { MarketItem } from "../lib/firestore";
+import { LoadingSpinner } from "./LoadingSpinner";
+import { ToastContainer, useToast } from "./Toast";
 
 type TabType = "home" | "analytics" | "profile";
 
-// Memoized Item Component for better performance
+// Currency interface and data
+interface Currency {
+  code: string;
+  symbol: string;
+  name: string;
+}
+
+const currencies: Currency[] = [
+  { code: "USD", symbol: "$", name: "US Dollar" },
+  { code: "NGN", symbol: "₦", name: "Nigerian Naira" },
+  { code: "EUR", symbol: "€", name: "Euro" },
+  { code: "GBP", symbol: "£", name: "British Pound" },
+  { code: "CAD", symbol: "C$", name: "Canadian Dollar" },
+  { code: "ZAR", symbol: "R", name: "South African Rand" },
+  { code: "KES", symbol: "KSh", name: "Kenyan Shilling" },
+  { code: "GHS", symbol: "₵", name: "Ghanaian Cedi" },
+];
+
+// Enhanced Shopping Item with celebrations
 const ShoppingItem = React.memo(
   ({
     item,
     onToggle,
     onRemove,
+    onUpdatePrice,
+    onItemCompleted,
     index,
+    currency,
   }: {
     item: MarketItem;
     onToggle: (id: string) => void;
     onRemove: (id: string) => void;
+    onUpdatePrice: (id: string, price: number) => void;
+    onItemCompleted: (item: MarketItem) => void;
     index: number;
-  }) => (
-    <div
-      className={`group relative p-4 rounded-xl border transition-all duration-300 cursor-pointer transform-gpu ${
-        item.completed
-          ? "bg-slate-800/30 border-emerald-500/30 opacity-60"
-          : "bg-slate-800/20 border-slate-700/50 hover:border-emerald-500/50 hover:bg-slate-800/40"
-      }`}
-      style={{ animationDelay: `${index * 0.05}s` }}
-      onClick={() => onToggle(item.id)}
-    >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div
-            className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
-              item.completed
-                ? "bg-emerald-500 border-emerald-500"
-                : "border-slate-600 group-hover:border-emerald-500"
-            }`}
-          >
-            {item.completed && <Check className="w-4 h-4 text-white" />}
-          </div>
-          <div>
-            <h4
-              className={`font-medium transition-all duration-300 font-heading ${
-                item.completed ? "line-through text-slate-400" : "text-white"
+    currency: Currency;
+  }) => {
+    const [editingPrice, setEditingPrice] = useState(false);
+    const [priceInput, setPriceInput] = useState(
+      item.actual_price?.toString() || item.estimated_price?.toString() || ""
+    );
+    const [justCompleted, setJustCompleted] = useState(false);
+
+    const handlePriceSubmit = () => {
+      const price = parseFloat(priceInput);
+      if (!isNaN(price) && price > 0) {
+        onUpdatePrice(item.id, price);
+      }
+      setEditingPrice(false);
+    };
+
+    const handleToggle = () => {
+      if (!item.completed) {
+        setJustCompleted(true);
+        setTimeout(() => setJustCompleted(false), 1000);
+        onItemCompleted(item);
+      }
+      onToggle(item.id);
+    };
+
+    return (
+      <div
+        className={`group relative p-4 rounded-xl border transition-all duration-300 cursor-pointer transform-gpu ${
+          item.completed
+            ? "bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border-emerald-500/30 opacity-75"
+            : "bg-slate-800/20 border-slate-700/50 hover:border-emerald-500/50 hover:bg-slate-800/40 hover:scale-[1.02]"
+        } ${justCompleted ? "animate-pulse scale-105" : ""}`}
+        style={{ animationDelay: `${index * 0.05}s` }}
+        onClick={handleToggle}
+      >
+        {/* Celebration sparkles for completed items */}
+        {justCompleted && (
+          <>
+            <div className="absolute -top-2 -right-2 text-yellow-400 animate-bounce">
+              ✨
+            </div>
+            <div className="absolute -top-1 -left-2 text-emerald-400 animate-ping">
+              🎉
+            </div>
+            <div className="absolute -bottom-1 -right-1 text-orange-400 animate-pulse">
+              ⭐
+            </div>
+          </>
+        )}
+
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div
+              className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
+                item.completed
+                  ? "bg-gradient-to-r from-emerald-500 to-teal-500 border-emerald-500 scale-110"
+                  : "border-slate-600 group-hover:border-emerald-500 group-hover:scale-110"
               }`}
             >
-              {item.name}
-            </h4>
-            <div className="flex items-center space-x-2 text-sm">
-              <span className="text-slate-400 capitalize font-body">
-                {item.category}
-              </span>
-              {item.estimated_price && (
-                <span className="text-emerald-400">
-                  ${item.estimated_price}
+              {item.completed && <Check className="w-4 h-4 text-white" />}
+            </div>
+            <div>
+              <h4
+                className={`font-medium transition-all duration-300 font-heading ${
+                  item.completed
+                    ? "line-through text-slate-400"
+                    : "text-white group-hover:text-emerald-100"
+                }`}
+              >
+                {item.name}
+              </h4>
+              <div className="flex items-center space-x-2 text-sm">
+                <span className="text-slate-400 capitalize font-body">
+                  {item.category}
                 </span>
-              )}
-              {item.actual_price && (
-                <span className="text-orange-400">→ ${item.actual_price}</span>
-              )}
+                {item.estimated_price && (
+                  <span className="text-emerald-400">
+                    Est: {currency.symbol}
+                    {item.estimated_price}
+                  </span>
+                )}
+                {editingPrice ? (
+                  <div
+                    className="flex items-center space-x-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span className="text-xs text-slate-400">
+                      {currency.symbol}
+                    </span>
+                    <input
+                      type="number"
+                      value={priceInput}
+                      onChange={(e) => setPriceInput(e.target.value)}
+                      onBlur={handlePriceSubmit}
+                      onKeyPress={(e) =>
+                        e.key === "Enter" && handlePriceSubmit()
+                      }
+                      className="w-16 px-1 py-0.5 text-xs bg-slate-700 border border-slate-600 rounded text-white"
+                      step="0.01"
+                      min="0"
+                      autoFocus
+                    />
+                  </div>
+                ) : (
+                  item.actual_price && (
+                    <span
+                      className="text-orange-400 cursor-pointer hover:underline flex items-center space-x-1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingPrice(true);
+                      }}
+                    >
+                      <span>
+                        Actual: {currency.symbol}
+                        {item.actual_price}
+                      </span>
+                    </span>
+                  )
+                )}
+                {!editingPrice && !item.actual_price && (
+                  <button
+                    className="text-xs text-slate-500 hover:text-orange-400 transition-colors px-2 py-1 rounded bg-slate-800/50 hover:bg-orange-500/20"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingPrice(true);
+                    }}
+                  >
+                    Add price
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
-        <button
-          className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-red-500/20 transition-all duration-300"
-          onClick={(e) => {
-            e.stopPropagation();
-            onRemove(item.id);
-          }}
-        >
-          <Trash2 className="w-4 h-4 text-red-400" />
-        </button>
+          <button
+            className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-red-500/20 transition-all duration-300 hover:scale-110"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove(item.id);
+            }}
+          >
+            <Trash2 className="w-4 h-4 text-red-400" />
+          </button>
+        </div>
       </div>
-    </div>
-  )
+    );
+  }
 );
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { currentUser, logout } = useAuth();
+  const {
+    marketRuns,
+    currentRun,
+    userStats,
+    loading,
+    error,
+    createNewRun,
+    addItem,
+    toggleItemComplete,
+    removeItem,
+    updateItem,
+    currentRunStats,
+  } = useMarketRuns();
+
+  // Toast notifications
+  const {
+    toasts,
+
+    dismissToast,
+    success,
+    removed,
+    added,
+    milestone,
+    achievement,
+  } = useToast();
+
+  // UI State
   const [activeTab, setActiveTab] = useState<TabType>("home");
-  const [currentRun, setCurrentRun] = useState<MarketRun | null>(null);
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [newItemName, setNewItemName] = useState("");
+  const [newItemCategory, setNewItemCategory] = useState("other");
+  const [newItemPrice, setNewItemPrice] = useState("");
   const [showAddItem, setShowAddItem] = useState(false);
+  const [isCreatingRun, setIsCreatingRun] = useState(false);
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+  const [selectedCurrency, setSelectedCurrency] = useState<Currency>(
+    currencies[0] || { code: "USD", symbol: "$", name: "US Dollar" }
+  );
+  const [completedCount, setCompletedCount] = useState(0);
 
-  // Sample data
-  useEffect(() => {
-    const sampleRun: MarketRun = {
-      id: "1",
-      title: "Today's Market Run",
-      date: new Date().toLocaleDateString(),
-      items: [
-        {
-          id: "1",
-          name: "Fresh Tomatoes",
-          estimated_price: 8.5,
-          completed: false,
-          category: "vegetables",
-        },
-        {
-          id: "2",
-          name: "Chicken Breast",
-          estimated_price: 15.0,
-          completed: false,
-          category: "meat",
-        },
-        {
-          id: "3",
-          name: "Onions",
-          estimated_price: 3.5,
-          completed: true,
-          actual_price: 3.2,
-          category: "vegetables",
-        },
-        {
-          id: "4",
-          name: "Rice (5kg)",
-          estimated_price: 12.99,
-          completed: false,
-          category: "grains",
-        },
-      ],
-      status: "shopping",
-    };
-    setCurrentRun(sampleRun);
+  // Load saved currency
+  React.useEffect(() => {
+    const savedCurrency = localStorage.getItem("martRuns_currency");
+    if (savedCurrency) {
+      const currency = currencies.find((c) => c.code === savedCurrency);
+      if (currency) {
+        setSelectedCurrency(currency);
+      }
+    }
   }, []);
 
-  // Memoized callbacks to prevent unnecessary re-renders
-  const toggleItemComplete = useCallback((itemId: string) => {
-    setCurrentRun((prev) => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        items: prev.items.map((item) =>
-          item.id === itemId ? { ...item, completed: !item.completed } : item
-        ),
+  // Track progress for celebrations
+  React.useEffect(() => {
+    if (currentRun) {
+      const completed = currentRunStats.completedItems;
+      const total = currentRunStats.totalItems;
+
+      // Milestone celebrations
+      if (completed > completedCount && total > 0) {
+        if (completed === Math.floor(total / 2) && total >= 4) {
+          milestone(
+            "Halfway There!",
+            "You're making excellent progress, Chef!"
+          );
+        }
+        if (completed === total && total > 0) {
+          achievement(
+            "Shopping Complete! 🎉",
+            "Outstanding work! All items collected."
+          );
+        }
+        if (
+          completed > 0 &&
+          completed % 5 === 0 &&
+          completed > completedCount
+        ) {
+          milestone(`${completed} Items Down!`, "You're on fire! Keep it up!");
+        }
+      }
+      setCompletedCount(completed);
+    }
+  }, [currentRunStats, currentRun, completedCount, milestone, achievement]);
+
+  // Enhanced callbacks with toast notifications
+  const handleToggleItem = useCallback(
+    async (itemId: string) => {
+      try {
+        const item = currentRun?.items.find((i) => i.id === itemId);
+        await toggleItemComplete(itemId);
+
+        if (item && !item.completed) {
+          success(`${item.name} completed!`);
+        }
+      } catch (error) {
+        console.error("Failed to toggle item:", error);
+      }
+    },
+    [toggleItemComplete, currentRun, success]
+  );
+
+  const handleRemoveItem = useCallback(
+    async (itemId: string) => {
+      try {
+        const item = currentRun?.items.find((i) => i.id === itemId);
+        await removeItem(itemId);
+
+        if (item) {
+          removed(`${item.name} removed`);
+        }
+      } catch (error) {
+        console.error("Failed to remove item:", error);
+      }
+    },
+    [removeItem, currentRun, removed]
+  );
+
+  const handleUpdatePrice = useCallback(
+    async (itemId: string, price: number) => {
+      try {
+        await updateItem(itemId, { actual_price: price });
+        success("Price updated!", "Smart budgeting, Chef!");
+      } catch (error) {
+        console.error("Failed to update price:", error);
+      }
+    },
+    [updateItem, success]
+  );
+
+  const handleItemCompleted = useCallback(() => {
+    // This is called for visual celebrations before the actual toggle
+  }, []);
+
+  const handleAddItem = useCallback(async () => {
+    if (!newItemName.trim()) return;
+
+    try {
+      // If no current run exists, create one first
+      let runToUse = currentRun;
+      if (!runToUse) {
+        const title = `Market Run - ${new Date().toLocaleDateString()}`;
+        await createNewRun(title);
+      }
+
+      const newItem: Omit<MarketItem, "id" | "createdAt" | "updatedAt"> = {
+        name: newItemName.trim(),
+        category: newItemCategory,
+        estimated_price: newItemPrice ? parseFloat(newItemPrice) : undefined,
+        completed: false,
       };
-    });
-  }, []);
 
-  const removeItem = useCallback((itemId: string) => {
-    setCurrentRun((prev) => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        items: prev.items.filter((item) => item.id !== itemId),
-      };
-    });
-  }, []);
+      await addItem(newItem);
+      added(`${newItem.name} added!`);
 
-  const addNewItem = useCallback(() => {
-    if (!currentRun || !newItemName.trim()) return;
+      setNewItemName("");
+      setNewItemPrice("");
+      setNewItemCategory("other");
+      setShowAddItem(false);
+    } catch (error) {
+      console.error("Failed to add item:", error);
+    }
+  }, [
+    newItemName,
+    newItemCategory,
+    newItemPrice,
+    addItem,
+    currentRun,
+    createNewRun,
+    added,
+  ]);
 
-    const newItem: MarketItem = {
-      id: Date.now().toString(),
-      name: newItemName,
-      completed: false,
-      category: "other",
-    };
+  const handleCreateNewRun = useCallback(async () => {
+    // In profile section, just redirect to home instead of creating run
+    if (activeTab === "profile") {
+      setActiveTab("home");
+      return;
+    }
 
-    setCurrentRun((prev) =>
-      prev
-        ? {
-            ...prev,
-            items: [...prev.items, newItem],
-          }
-        : null
-    );
-
-    setNewItemName("");
-    setShowAddItem(false);
-  }, [currentRun, newItemName]);
+    setIsCreatingRun(true);
+    try {
+      const title = `Market Run - ${new Date().toLocaleDateString()}`;
+      await createNewRun(title);
+      achievement("New Run Created!", "Ready to conquer the market!");
+    } catch (error) {
+      console.error("Failed to create new run:", error);
+    } finally {
+      setIsCreatingRun(false);
+    }
+  }, [createNewRun, achievement, activeTab]);
 
   const toggleVoice = useCallback(() => {
     setIsVoiceActive((prev) => !prev);
-    // Voice functionality will be implemented later
-  }, []);
+    if (!isVoiceActive) {
+      success("Voice Mode Activated!", "Listening for your commands...");
+    }
+  }, [isVoiceActive, success]);
 
-  const handleKeyPress = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter") {
-        addNewItem();
-      }
+  const handleSignOut = useCallback(async () => {
+    try {
+      await logout();
+      navigate("/");
+    } catch (error) {
+      console.error("Failed to sign out:", error);
+    }
+  }, [logout, navigate]);
+
+  const handleCurrencyChange = useCallback(
+    (currency: Currency) => {
+      setSelectedCurrency(currency);
+      localStorage.setItem("martRuns_currency", currency.code);
+      setShowCurrencyPicker(false);
+      success(`Currency changed to ${currency.name}!`);
     },
-    [addNewItem]
+    [success]
   );
 
-  const handleSignOut = useCallback(() => {
-    localStorage.removeItem("martRuns_onboarded");
-    localStorage.removeItem("martRuns_userProfile");
-    navigate("/");
-  }, [navigate]);
-
-  // Memoized calculations
-  const progressStats = useMemo(() => {
-    if (!currentRun) return { completedItems: 0, totalItems: 0, progress: 0 };
-
-    const completedItems = currentRun.items.filter(
-      (item) => item.completed
-    ).length;
-    const totalItems = currentRun.items.length;
-    const progress = totalItems > 0 ? (completedItems / totalItems) * 100 : 0;
-
-    return { completedItems, totalItems, progress };
-  }, [currentRun?.items]);
-
-  // Analytics data
-  const analyticsData = useMemo(() => {
-    if (!currentRun)
-      return { totalSpent: 0, totalEstimated: 0, savedAmount: 0 };
-
-    const totalEstimated = currentRun.items.reduce(
-      (sum, item) => sum + (item.estimated_price || 0),
-      0
-    );
-    const totalSpent = currentRun.items.reduce(
-      (sum, item) => sum + (item.actual_price || item.estimated_price || 0),
-      0
-    );
-    const savedAmount = totalEstimated - totalSpent;
-
-    return { totalSpent, totalEstimated, savedAmount };
-  }, [currentRun?.items]);
-
-  const userProfile = JSON.parse(
-    localStorage.getItem("martRuns_userProfile") || "{}"
+  // Categories for dropdown - memoized to prevent re-renders
+  const categories = useMemo(
+    () => [
+      "vegetables",
+      "fruits",
+      "meat",
+      "dairy",
+      "grains",
+      "spices",
+      "beverages",
+      "other",
+    ],
+    []
   );
 
-  // Tab content components
-  const HomeContent = () => (
-    <>
-      {currentRun && (
-        <>
-          {/* Progress Card */}
-          <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50 animate-slide-down">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-semibold text-transparent bg-gradient-to-r from-emerald-400 to-orange-400 bg-clip-text font-heading">
-                  {currentRun.title}
-                </h2>
-                <p className="text-sm text-slate-400 font-body">
-                  {currentRun.date}
-                </p>
-              </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold text-transparent bg-gradient-to-r from-emerald-400 to-orange-400 bg-clip-text font-heading">
-                  {progressStats.completedItems}/{progressStats.totalItems}
-                </div>
-                <div className="text-sm text-slate-400 font-body">Items</div>
-              </div>
-            </div>
-
-            {/* Progress Bar */}
-            <div className="relative w-full h-3 bg-slate-800 rounded-full overflow-hidden">
-              <div
-                className="absolute left-0 top-0 h-full bg-gradient-to-r from-emerald-500 to-orange-500 transition-all duration-500 ease-out"
-                style={{ width: `${progressStats.progress}%` }}
-              ></div>
-            </div>
-
-            <div className="mt-2 text-right">
-              <span className="text-sm text-transparent bg-gradient-to-r from-emerald-400 to-orange-400 bg-clip-text font-medium font-heading">
-                {Math.round(progressStats.progress)}% Complete
-              </span>
-            </div>
+  // Tab content components - Memoized to prevent unnecessary re-renders
+  const HomeContent = useMemo(
+    () => (
+      <>
+        {/* Auto-create run when adding first item */}
+        {!currentRun && (
+          <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50 text-center animate-slide-down">
+            <h2 className="text-xl font-semibold text-white font-heading mb-4">
+              Start Your Shopping List
+            </h2>
+            <p className="text-slate-400 font-body mb-6">
+              Add your first item to create a new market run
+            </p>
+            <button
+              onClick={() => setShowAddItem(true)}
+              className="btn-primary flex items-center space-x-2 mx-auto"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add First Item</span>
+            </button>
           </div>
+        )}
 
-          {/* Shopping List */}
-          <div
-            className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50 animate-slide-up"
-            style={{ animationDelay: "0.1s" }}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold font-heading text-white">
-                Shopping List
-              </h3>
-              <button
-                onClick={() => setShowAddItem(!showAddItem)}
-                className="w-10 h-10 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 flex items-center justify-center text-emerald-400 transition-all duration-300"
-                title="Add Item"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
+        {currentRun && (
+          <>
+            {/* Progress Card */}
+            <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50 animate-slide-down">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-transparent bg-gradient-to-r from-emerald-400 to-orange-400 bg-clip-text font-heading">
+                    {currentRun.title}
+                  </h2>
+                  <p className="text-sm text-slate-400 font-body">
+                    {currentRun.date} • {currentRun.status}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-bold text-transparent bg-gradient-to-r from-emerald-400 to-orange-400 bg-clip-text font-heading">
+                    {currentRunStats.completedItems}/
+                    {currentRunStats.totalItems}
+                  </div>
+                  <div className="text-sm text-slate-400 font-body">Items</div>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="relative w-full h-3 bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className="absolute left-0 top-0 h-full bg-gradient-to-r from-emerald-500 to-orange-500 transition-all duration-500 ease-out"
+                  style={{ width: `${currentRunStats.progress}%` }}
+                ></div>
+              </div>
+
+              <div className="mt-2 text-right">
+                <span className="text-sm text-transparent bg-gradient-to-r from-emerald-400 to-orange-400 bg-clip-text font-medium font-heading">
+                  {Math.round(currentRunStats.progress)}% Complete
+                </span>
+              </div>
             </div>
 
-            {/* Add Item Form */}
-            {showAddItem && (
-              <div className="mb-4 p-4 rounded-xl bg-slate-800/30 border border-slate-700/50 animate-slide-down">
-                <div className="flex space-x-3">
-                  <input
-                    type="text"
-                    value={newItemName}
-                    onChange={(e) => setNewItemName(e.target.value)}
-                    placeholder="Add new item..."
-                    className="flex-1 bg-slate-800/50 border border-slate-600/50 rounded-xl px-4 py-3 text-white placeholder-slate-400 font-body focus:outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20"
-                    onKeyPress={handleKeyPress}
-                  />
-                  <button
-                    onClick={addNewItem}
-                    className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-orange-500 text-white rounded-xl font-semibold font-heading hover:shadow-lg hover:scale-105 transition-all duration-300"
+            {/* Shopping List */}
+            <div
+              className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50 animate-slide-up"
+              style={{ animationDelay: "0.1s" }}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold font-heading text-white">
+                  Shopping List
+                </h3>
+                <button
+                  onClick={() => setShowAddItem(!showAddItem)}
+                  className="w-10 h-10 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 flex items-center justify-center text-emerald-400 transition-all duration-300"
+                  title="Add Item"
+                >
+                  <Plus className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Add Item Form */}
+              {showAddItem && (
+                <div className="mb-4 p-4 rounded-xl bg-slate-800/30 border border-slate-700/50 animate-slide-down">
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleAddItem();
+                    }}
+                    className="space-y-3"
                   >
-                    <span className="hidden sm:inline">Add Item</span>
-                    <span className="sm:hidden">Add</span>
-                  </button>
+                    <input
+                      type="text"
+                      value={newItemName}
+                      onChange={(e) => setNewItemName(e.target.value)}
+                      placeholder="Item name..."
+                      className="w-full bg-slate-800/50 border border-slate-600/50 rounded-xl px-4 py-3 text-white placeholder-slate-400 font-body focus:outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20"
+                      autoComplete="off"
+                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <select
+                        value={newItemCategory}
+                        onChange={(e) => setNewItemCategory(e.target.value)}
+                        className="bg-slate-800/50 border border-slate-600/50 rounded-xl px-4 py-3 text-white font-body focus:outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20"
+                      >
+                        {categories.map((category) => (
+                          <option key={category} value={category}>
+                            {category.charAt(0).toUpperCase() +
+                              category.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        value={newItemPrice}
+                        onChange={(e) => setNewItemPrice(e.target.value)}
+                        placeholder="Estimated price"
+                        step="0.01"
+                        min="0"
+                        className="bg-slate-800/50 border border-slate-600/50 rounded-xl px-4 py-3 text-white placeholder-slate-400 font-body focus:outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={!newItemName.trim()}
+                      className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Add Item
+                    </button>
+                  </form>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Items List */}
-            <div className="space-y-3">
-              {currentRun.items.map((item, index) => (
-                <ShoppingItem
-                  key={item.id}
-                  item={item}
-                  onToggle={toggleItemComplete}
-                  onRemove={removeItem}
-                  index={index}
-                />
-              ))}
+              {/* Items List */}
+              <div className="space-y-3">
+                {currentRun.items.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400">
+                    <ShoppingCart className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p>No items yet. Add your first item!</p>
+                  </div>
+                ) : (
+                  currentRun.items.map((item, index) => (
+                    <ShoppingItem
+                      key={item.id}
+                      item={item}
+                      onToggle={handleToggleItem}
+                      onRemove={handleRemoveItem}
+                      onUpdatePrice={handleUpdatePrice}
+                      onItemCompleted={handleItemCompleted}
+                      index={index}
+                      currency={selectedCurrency}
+                    />
+                  ))
+                )}
+              </div>
             </div>
-          </div>
-        </>
-      )}
-    </>
+          </>
+        )}
+      </>
+    ),
+    [
+      currentRun,
+      currentRunStats,
+      handleCreateNewRun,
+      isCreatingRun,
+      showAddItem,
+      newItemName,
+      newItemCategory,
+      newItemPrice,
+      handleAddItem,
+      handleToggleItem,
+      handleRemoveItem,
+      handleUpdatePrice,
+      handleItemCompleted,
+      categories,
+    ]
   );
 
   const AnalyticsContent = () => (
@@ -362,73 +629,117 @@ const Dashboard: React.FC = () => {
         Analytics
       </h2>
 
-      {/* Spending Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
-          <div className="flex items-center space-x-3 mb-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
-              <DollarSign className="w-5 h-5 text-emerald-400" />
-            </div>
-            <div>
-              <p className="text-sm text-slate-400 font-body">
-                Total Estimated
-              </p>
-              <p className="text-xl font-bold text-white font-heading">
-                ${analyticsData.totalEstimated.toFixed(2)}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
-          <div className="flex items-center space-x-3 mb-3">
-            <div className="w-10 h-10 rounded-xl bg-orange-500/20 flex items-center justify-center">
-              <Target className="w-5 h-5 text-orange-400" />
-            </div>
-            <div>
-              <p className="text-sm text-slate-400 font-body">Total Spent</p>
-              <p className="text-xl font-bold text-white font-heading">
-                ${analyticsData.totalSpent.toFixed(2)}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
-          <div className="flex items-center space-x-3 mb-3">
-            <div className="w-10 h-10 rounded-xl bg-teal-500/20 flex items-center justify-center">
-              <Award className="w-5 h-5 text-teal-400" />
-            </div>
-            <div>
-              <p className="text-sm text-slate-400 font-body">Amount Saved</p>
-              <p className="text-xl font-bold text-white font-heading">
-                ${analyticsData.savedAmount.toFixed(2)}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Shopping History */}
-      <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
-        <h3 className="text-lg font-semibold font-heading text-white mb-4">
-          Recent Activity
-        </h3>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-800/30">
-            <div className="flex items-center space-x-3">
-              <Calendar className="w-5 h-5 text-slate-400" />
+      {/* Current Run Stats */}
+      {currentRun && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
+            <div className="flex items-center space-x-3 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                <DollarSign className="w-5 h-5 text-emerald-400" />
+              </div>
               <div>
-                <p className="font-medium text-white font-body">
-                  Today's Market Run
+                <p className="text-sm text-slate-400 font-body">
+                  Total Estimated
                 </p>
-                <p className="text-sm text-slate-400">4 items • In Progress</p>
+                <p className="text-xl font-bold text-white font-heading">
+                  ${currentRunStats.totalEstimated.toFixed(2)}
+                </p>
               </div>
             </div>
-            <span className="text-emerald-400 font-semibold">
-              ${analyticsData.totalEstimated.toFixed(2)}
-            </span>
           </div>
+
+          <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
+            <div className="flex items-center space-x-3 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-orange-500/20 flex items-center justify-center">
+                <Target className="w-5 h-5 text-orange-400" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-400 font-body">Total Spent</p>
+                <p className="text-xl font-bold text-white font-heading">
+                  ${currentRunStats.totalSpent.toFixed(2)}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
+            <div className="flex items-center space-x-3 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-teal-500/20 flex items-center justify-center">
+                <Award className="w-5 h-5 text-teal-400" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-400 font-body">Amount Saved</p>
+                <p className="text-xl font-bold text-white font-heading">
+                  ${currentRunStats.savedAmount.toFixed(2)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* User Stats */}
+      {userStats && (
+        <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
+          <h3 className="text-lg font-semibold font-heading text-white mb-4">
+            Overall Statistics
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center">
+              <p className="text-2xl font-bold text-emerald-400 font-heading">
+                {userStats.totalRuns}
+              </p>
+              <p className="text-sm text-slate-400 font-body">Total Runs</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-orange-400 font-heading">
+                ${userStats.totalSpent.toFixed(0)}
+              </p>
+              <p className="text-sm text-slate-400 font-body">Total Spent</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-teal-400 font-heading">
+                ${userStats.totalSaved.toFixed(0)}
+              </p>
+              <p className="text-sm text-slate-400 font-body">Total Saved</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-blue-400 font-heading">
+                {userStats.completedItems}
+              </p>
+              <p className="text-sm text-slate-400 font-body">Items Bought</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recent Runs */}
+      <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
+        <h3 className="text-lg font-semibold font-heading text-white mb-4">
+          Recent Market Runs
+        </h3>
+        <div className="space-y-3">
+          {marketRuns.slice(0, 5).map((run) => (
+            <div
+              key={run.id}
+              className="flex items-center justify-between p-3 rounded-xl bg-slate-800/30"
+            >
+              <div className="flex items-center space-x-3">
+                <Calendar className="w-5 h-5 text-slate-400" />
+                <div>
+                  <p className="font-medium text-white font-body">
+                    {run.title}
+                  </p>
+                  <p className="text-sm text-slate-400">
+                    {run.totalItems} items • {run.status}
+                  </p>
+                </div>
+              </div>
+              <span className="text-emerald-400 font-semibold">
+                ${run.totalSpent.toFixed(2)}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -444,65 +755,161 @@ const Dashboard: React.FC = () => {
       <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
         <div className="flex items-center space-x-4 mb-6">
           <div className="w-16 h-16 rounded-full bg-gradient-to-r from-emerald-500 to-orange-500 flex items-center justify-center">
-            <User className="w-8 h-8 text-white" />
+            {currentUser?.photoURL ? (
+              <img
+                src={currentUser.photoURL}
+                alt="Profile"
+                className="w-full h-full rounded-full object-cover"
+              />
+            ) : (
+              <User className="w-8 h-8 text-white" />
+            )}
           </div>
           <div>
             <h3 className="text-xl font-semibold text-white font-heading">
-              {userProfile.name || "Chef"}
+              {currentUser?.displayName || "Chef"}
             </h3>
-            <p className="text-slate-400 font-body capitalize">
-              {userProfile.experience || "Home Cook"}
-            </p>
+            <p className="text-slate-400 font-body">{currentUser?.email}</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="text-center p-4 rounded-xl bg-slate-800/30">
-            <p className="text-2xl font-bold text-emerald-400 font-heading">
-              12
-            </p>
-            <p className="text-sm text-slate-400 font-body">Completed Runs</p>
+        {userStats && (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="text-center p-4 rounded-xl bg-slate-800/30">
+              <p className="text-2xl font-bold text-emerald-400 font-heading">
+                {userStats.totalRuns}
+              </p>
+              <p className="text-sm text-slate-400 font-body">Completed Runs</p>
+            </div>
+            <div className="text-center p-4 rounded-xl bg-slate-800/30">
+              <p className="text-2xl font-bold text-orange-400 font-heading">
+                {selectedCurrency.symbol}
+                {userStats.totalSaved.toFixed(0)}
+              </p>
+              <p className="text-sm text-slate-400 font-body">Total Saved</p>
+            </div>
           </div>
-          <div className="text-center p-4 rounded-xl bg-slate-800/30">
-            <p className="text-2xl font-bold text-orange-400 font-heading">
-              $248
-            </p>
-            <p className="text-sm text-slate-400 font-body">Total Saved</p>
-          </div>
+        )}
+      </div>
+
+      {/* Currency Settings */}
+      <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
+        <h3 className="text-lg font-semibold font-heading text-white mb-4 flex items-center space-x-2">
+          <Globe className="w-5 h-5 text-emerald-400" />
+          <span>Currency Settings</span>
+        </h3>
+
+        <div className="relative">
+          <button
+            onClick={() => setShowCurrencyPicker(!showCurrencyPicker)}
+            className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-800/30 border border-slate-600/50 hover:border-emerald-500/50 text-white transition-all duration-300"
+          >
+            <div className="flex items-center space-x-3">
+              <span className="text-2xl">{selectedCurrency.symbol}</span>
+              <div>
+                <p className="font-semibold font-heading">
+                  {selectedCurrency.name}
+                </p>
+                <p className="text-sm text-slate-400">
+                  {selectedCurrency.code}
+                </p>
+              </div>
+            </div>
+            <ChevronDown
+              className={`w-5 h-5 transition-transform ${
+                showCurrencyPicker ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+
+          {showCurrencyPicker && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-slate-800/95 backdrop-blur-xl border border-slate-600/50 rounded-xl overflow-hidden z-10 shadow-2xl">
+              {currencies.map((currency) => (
+                <button
+                  key={currency.code}
+                  onClick={() => handleCurrencyChange(currency)}
+                  className={`w-full flex items-center space-x-3 p-3 hover:bg-slate-700/50 transition-colors ${
+                    selectedCurrency.code === currency.code
+                      ? "bg-emerald-500/20"
+                      : ""
+                  }`}
+                >
+                  <span className="text-xl">{currency.symbol}</span>
+                  <div className="text-left">
+                    <p className="font-medium text-white">{currency.name}</p>
+                    <p className="text-sm text-slate-400">{currency.code}</p>
+                  </div>
+                  {selectedCurrency.code === currency.code && (
+                    <Star className="w-4 h-4 text-emerald-400 ml-auto" />
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Settings */}
+      {/* Actions */}
       <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
         <h3 className="text-lg font-semibold font-heading text-white mb-4">
-          Settings
+          Actions
         </h3>
         <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-800/30">
-            <div className="flex items-center space-x-3">
-              <Mic className="w-5 h-5 text-slate-400" />
-              <span className="text-white font-body">Voice Commands</span>
-            </div>
-            <div
-              className={`w-12 h-6 rounded-full transition-colors ${
-                userProfile.voiceEnabled ? "bg-emerald-500" : "bg-slate-600"
-              }`}
-            >
-              <div
-                className={`w-5 h-5 bg-white rounded-full transition-transform transform ${
-                  userProfile.voiceEnabled ? "translate-x-6" : "translate-x-1"
-                } mt-0.5`}
-              ></div>
-            </div>
-          </div>
+          <button
+            onClick={handleCreateNewRun}
+            className="w-full flex items-center justify-center space-x-2 p-3 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-400 transition-all duration-300 hover:scale-105"
+          >
+            <Home className="w-5 h-5" />
+            <span className="font-body">Go to Shopping List</span>
+          </button>
 
           <button
             onClick={handleSignOut}
-            className="w-full flex items-center justify-center space-x-2 p-3 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 transition-all duration-300"
+            className="w-full flex items-center justify-center space-x-2 p-3 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 transition-all duration-300 hover:scale-105"
           >
             <LogOut className="w-5 h-5" />
             <span className="font-body">Sign Out</span>
           </button>
+        </div>
+      </div>
+
+      {/* Chef Achievement Section */}
+      <div className="bg-gradient-to-r from-emerald-500/10 to-orange-500/10 backdrop-blur-xl rounded-2xl p-6 border border-emerald-500/30">
+        <h3 className="text-lg font-semibold font-heading text-white mb-4 flex items-center space-x-2">
+          <Trophy className="w-5 h-5 text-yellow-400" />
+          <span>Chef Status</span>
+        </h3>
+
+        <div className="flex items-center space-x-4">
+          <div className="flex space-x-1">
+            {[...Array(5)].map((_, i) => (
+              <Star
+                key={i}
+                className={`w-6 h-6 ${
+                  i <
+                  Math.min(5, Math.floor((userStats?.totalRuns || 0) / 2) + 1)
+                    ? "text-yellow-400 fill-current"
+                    : "text-slate-600"
+                }`}
+              />
+            ))}
+          </div>
+          <div>
+            <p className="font-semibold text-white">
+              {userStats?.totalRuns === 0
+                ? "Novice Chef"
+                : userStats?.totalRuns && userStats.totalRuns < 5
+                ? "Home Cook"
+                : userStats?.totalRuns && userStats.totalRuns < 15
+                ? "Experienced Chef"
+                : userStats?.totalRuns && userStats.totalRuns < 30
+                ? "Master Chef"
+                : "Culinary Legend"}
+            </p>
+            <p className="text-sm text-slate-400">
+              {userStats?.totalRuns || 0} shopping runs completed
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -511,18 +918,50 @@ const Dashboard: React.FC = () => {
   const renderContent = () => {
     switch (activeTab) {
       case "home":
-        return <HomeContent />;
+        return HomeContent;
       case "analytics":
         return <AnalyticsContent />;
       case "profile":
         return <ProfileContent />;
       default:
-        return <HomeContent />;
+        return HomeContent;
     }
   };
 
+  // Error display
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-gray-950 to-slate-900 text-white flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <AlertCircle className="w-16 h-16 text-red-400 mx-auto" />
+          <h2 className="text-2xl font-bold text-red-400">Error</h2>
+          <p className="text-slate-300 max-w-md">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="btn-primary flex items-center space-x-2 mx-auto"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Retry</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-gray-950 to-slate-900 text-white flex items-center justify-center">
+        <LoadingSpinner size="lg" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-gray-950 to-slate-900 text-white overflow-hidden">
+      {/* Toast Notifications */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
       {/* Sophisticated Background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-gradient-to-br from-emerald-500/20 to-transparent rounded-full blur-3xl animate-float"></div>
@@ -545,15 +984,23 @@ const Dashboard: React.FC = () => {
                 MartRuns
               </h1>
               <p className="text-xs sm:text-sm text-slate-400 font-body hidden sm:block">
-                Smart Market Management
+                Smart Market Management • {selectedCurrency.code}
               </p>
             </div>
           </div>
 
           <div className="flex items-center space-x-1 sm:space-x-2">
+            {currentUser?.photoURL && (
+              <img
+                src={currentUser.photoURL}
+                alt="Profile"
+                className="w-8 h-8 rounded-full border border-slate-600"
+              />
+            )}
             <button
               className="w-10 h-10 rounded-xl bg-slate-800/50 hover:bg-slate-700/50 border border-slate-600/30 flex items-center justify-center text-slate-300 hover:text-white transition-all duration-300"
               title="Settings"
+              onClick={() => setActiveTab("profile")}
             >
               <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
@@ -598,7 +1045,7 @@ const Dashboard: React.FC = () => {
       </nav>
 
       {/* Floating Voice Button - Only show on Home tab */}
-      {activeTab === "home" && (
+      {activeTab === "home" && currentRun && (
         <button
           onClick={toggleVoice}
           className={`fixed bottom-20 right-6 z-40 w-14 h-14 rounded-full bg-gradient-to-r from-emerald-500 to-orange-500 shadow-xl flex items-center justify-center transition-all duration-300 hover:scale-110 ${
@@ -630,6 +1077,45 @@ const Dashboard: React.FC = () => {
             <span className="text-sm text-slate-300 font-body">
               Listening...
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* Currency picker overlay */}
+      {showCurrencyPicker && (
+        <div
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center"
+          onClick={() => setShowCurrencyPicker(false)}
+        >
+          <div
+            className="bg-slate-800/95 backdrop-blur-xl border border-slate-600/50 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-white mb-4 text-center">
+              Choose Currency
+            </h3>
+            <div className="space-y-2">
+              {currencies.map((currency) => (
+                <button
+                  key={currency.code}
+                  onClick={() => handleCurrencyChange(currency)}
+                  className={`w-full flex items-center space-x-3 p-3 rounded-xl hover:bg-slate-700/50 transition-colors ${
+                    selectedCurrency.code === currency.code
+                      ? "bg-emerald-500/20 border border-emerald-500/30"
+                      : ""
+                  }`}
+                >
+                  <span className="text-2xl">{currency.symbol}</span>
+                  <div className="text-left flex-1">
+                    <p className="font-medium text-white">{currency.name}</p>
+                    <p className="text-sm text-slate-400">{currency.code}</p>
+                  </div>
+                  {selectedCurrency.code === currency.code && (
+                    <Star className="w-5 h-5 text-emerald-400" />
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

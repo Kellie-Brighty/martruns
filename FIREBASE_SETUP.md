@@ -169,3 +169,4 @@ For production deployment:
 - Make sure all VITE\_ prefixed variables are set
 - Restart development server after changing .env
 - Check if .env file is in project root (not in src/)
+ 
