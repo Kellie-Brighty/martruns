@@ -510,7 +510,7 @@ const Landing: React.FC = () => {
                 <span className="text-secondary-400 font-semibold"> Kelly</span>
               </p>
               <p className="text-xs text-dark-500 mt-1">
-                © 2024 MartRuns. Revolutionizing kitchen management.
+                © 2025 MartRuns. Revolutionizing kitchen management.
               </p>
             </div>
           </div>

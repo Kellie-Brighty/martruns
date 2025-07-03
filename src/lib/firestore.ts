@@ -34,6 +34,7 @@ export interface MarketRun {
   id: string;
   title: string;
   date: string;
+  scheduledDate?: string; // ISO string for when the run is scheduled
   items: MarketItem[];
   status: "planning" | "shopping" | "completed";
   userId: string;
@@ -43,6 +44,9 @@ export interface MarketRun {
   totalSpent: number;
   completedItems: number;
   totalItems: number;
+  budget?: number;
+  budgetRemaining?: number;
+  budgetExceeded?: boolean;
 }
 
 export interface VendorNote {
@@ -67,14 +71,20 @@ export interface UserStats {
 // Market Runs Functions
 export const createMarketRun = async (
   userId: string,
-  title: string
+  title: string,
+  budget?: number,
+  scheduledDate?: string
 ): Promise<string> => {
   try {
+    const now = new Date();
+    const isScheduled = scheduledDate && new Date(scheduledDate) > now;
+
     const runRef = await addDoc(collection(db, "marketRuns"), {
       title,
       date: new Date().toLocaleDateString(),
+      ...(scheduledDate && { scheduledDate }),
       items: [],
-      status: "planning" as const,
+      status: isScheduled ? ("planning" as const) : ("shopping" as const),
       userId,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -82,6 +92,11 @@ export const createMarketRun = async (
       totalSpent: 0,
       completedItems: 0,
       totalItems: 0,
+      ...(budget && {
+        budget,
+        budgetRemaining: budget,
+        budgetExceeded: false,
+      }),
     });
 
     return runRef.id;
@@ -178,7 +193,7 @@ export const addItemToRun = async (
     };
 
     const updatedItems = [...runData.items, newItem];
-    const stats = calculateRunStats(updatedItems);
+    const stats = calculateRunStats(updatedItems, runData.budget);
 
     await updateDoc(runRef, {
       items: updatedItems,
@@ -212,7 +227,7 @@ export const updateItemInRun = async (
       item.id === itemId ? { ...item, ...updates, updatedAt: new Date() } : item
     );
 
-    const stats = calculateRunStats(updatedItems);
+    const stats = calculateRunStats(updatedItems, runData.budget);
 
     await updateDoc(runRef, {
       items: updatedItems,
@@ -242,7 +257,7 @@ export const removeItemFromRun = async (
 
     const runData = runDoc.data() as MarketRun;
     const updatedItems = runData.items.filter((item) => item.id !== itemId);
-    const stats = calculateRunStats(updatedItems);
+    const stats = calculateRunStats(updatedItems, runData.budget);
 
     await updateDoc(runRef, {
       items: updatedItems,
@@ -343,7 +358,7 @@ export const subscribeToUserStats = (
 };
 
 // Helper Functions
-const calculateRunStats = (items: MarketItem[]) => {
+const calculateRunStats = (items: MarketItem[], currentBudget?: number) => {
   const totalEstimated = items.reduce(
     (sum, item) => sum + (item.estimated_price || 0),
     0
@@ -355,12 +370,26 @@ const calculateRunStats = (items: MarketItem[]) => {
   const completedItems = items.filter((item) => item.completed).length;
   const totalItems = items.length;
 
-  return {
+  const stats = {
     totalEstimated,
     totalSpent,
     completedItems,
     totalItems,
   };
+
+  // Add budget calculations if budget is set
+  if (currentBudget !== undefined) {
+    const budgetRemaining = currentBudget - totalEstimated;
+    const budgetExceeded = totalEstimated > currentBudget;
+
+    return {
+      ...stats,
+      budgetRemaining,
+      budgetExceeded,
+    };
+  }
+
+  return stats;
 };
 
 const updateUserStats = async (userId: string): Promise<void> => {
@@ -440,7 +469,7 @@ export const duplicateMarketRun = async (
       userId,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-      ...calculateRunStats(resetItems),
+      ...calculateRunStats(resetItems, originalRun.budget),
     });
 
     return newRunRef.id;
@@ -512,4 +541,33 @@ export const analyticsService = {
     // Implementation for popular items
     return [];
   },
+};
+
+// Helper function to check and update run status based on scheduled time
+export const updateRunStatusBasedOnSchedule = async (
+  run: MarketRun
+): Promise<void> => {
+  if (!run.scheduledDate || run.status === "completed") return;
+
+  const now = new Date();
+  const scheduledTime = new Date(run.scheduledDate);
+
+  // If scheduled time has passed and run is still in planning, move to shopping
+  if (scheduledTime <= now && run.status === "planning") {
+    await updateMarketRun(run.id, { status: "shopping" });
+  }
+};
+
+// Helper function to check if a run is scheduled for the future
+export const isRunScheduledForFuture = (run: MarketRun): boolean => {
+  if (!run.scheduledDate) return false;
+  return new Date(run.scheduledDate) > new Date();
+};
+
+// Helper function to get run display status
+export const getRunDisplayStatus = (run: MarketRun): string => {
+  if (run.status === "completed") return "completed";
+  if (run.status === "shopping") return "shopping";
+  if (run.scheduledDate && isRunScheduledForFuture(run)) return "scheduled";
+  return "planning";
 };

@@ -240,7 +240,7 @@ html {
 ::-webkit-scrollbar-thumb {
   background: linear-gradient(to bottom, #10b981, #f97316);
   border-radius: 4px;
-}
+  }
 
 ::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(to bottom, #059669, #ea580c);

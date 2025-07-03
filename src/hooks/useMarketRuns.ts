@@ -13,6 +13,7 @@ import {
   deleteMarketRun,
   completeMarketRun,
   duplicateMarketRun,
+  
 } from "../lib/firestore";
 
 interface UseMarketRunsReturn {
@@ -24,7 +25,7 @@ interface UseMarketRunsReturn {
   error: string | null;
 
   // Actions
-  createNewRun: (title: string) => Promise<string>;
+  createNewRun: (title: string, budget?: number, scheduledDate?: string) => Promise<string>;
   setCurrentRunId: (runId: string | null) => void;
   addItem: (
     item: Omit<MarketItem, "id" | "createdAt" | "updatedAt">
@@ -45,6 +46,10 @@ interface UseMarketRunsReturn {
     totalEstimated: number;
     totalSpent: number;
     savedAmount: number;
+    budget?: number;
+    budgetRemaining?: number;
+    budgetExceeded?: boolean;
+    budgetUsagePercentage?: number;
   };
 }
 
@@ -117,11 +122,11 @@ export const useMarketRuns = (): UseMarketRunsReturn => {
 
   // Actions
   const createNewRun = useCallback(
-    async (title: string): Promise<string> => {
+    async (title: string, budget?: number, scheduledDate?: string): Promise<string> => {
       if (!currentUser) throw new Error("User not authenticated");
 
       try {
-        const runId = await createMarketRun(currentUser.uid, title);
+        const runId = await createMarketRun(currentUser.uid, title, budget, scheduledDate);
         setCurrentRunId(runId);
         return runId;
       } catch (err) {
@@ -312,7 +317,7 @@ export const useMarketRuns = (): UseMarketRunsReturn => {
 
     const savedAmount = totalEstimated - totalSpent;
 
-    return {
+    const baseStats = {
       completedItems,
       totalItems,
       progress,
@@ -320,6 +325,24 @@ export const useMarketRuns = (): UseMarketRunsReturn => {
       totalSpent,
       savedAmount,
     };
+
+    // Add budget calculations if budget is set
+    if (currentRun.budget !== undefined) {
+      const budgetRemaining = currentRun.budget - totalEstimated;
+      const budgetExceeded = totalEstimated > currentRun.budget;
+      const budgetUsagePercentage =
+        currentRun.budget > 0 ? (totalEstimated / currentRun.budget) * 100 : 0;
+
+      return {
+        ...baseStats,
+        budget: currentRun.budget,
+        budgetRemaining,
+        budgetExceeded,
+        budgetUsagePercentage,
+      };
+    }
+
+    return baseStats;
   }, [currentRun]);
 
   return {

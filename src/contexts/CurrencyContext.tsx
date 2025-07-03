@@ -82,3 +82,4 @@ export const CurrencyProvider: React.FC<CurrencyProviderProps> = ({
     </CurrencyContext.Provider>
   );
 };
+ 
