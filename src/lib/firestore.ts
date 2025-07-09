@@ -26,6 +26,7 @@ export interface MarketItem {
   actual_price?: number;
   completed: boolean;
   category: string;
+  note?: string; // Optional note when completing item
   createdAt?: any;
   updatedAt?: any;
 }
@@ -47,6 +48,7 @@ export interface MarketRun {
   budget?: number;
   budgetRemaining?: number;
   budgetExceeded?: boolean;
+  notes?: string; // Auto-generated summary from item notes
 }
 
 export interface VendorNote {
@@ -422,14 +424,99 @@ const updateUserStats = async (userId: string): Promise<void> => {
   }
 };
 
+// Helper function to generate run summary from item notes
+const generateRunSummary = (items: MarketItem[]): string => {
+  const itemsWithNotes = items.filter((item) => item.note && item.note.trim());
+
+  if (itemsWithNotes.length === 0) {
+    return "Shopping completed successfully! No specific notes were added.";
+  }
+
+  let summary = "Shopping Summary:\n\n";
+
+  // Group notes by sentiment/type
+  const positiveKeywords = [
+    "great",
+    "good",
+    "excellent",
+    "fresh",
+    "quality",
+    "cheap",
+    "deal",
+    "perfect",
+  ];
+  const negativeKeywords = [
+    "expensive",
+    "poor",
+    "bad",
+    "old",
+    "spoiled",
+    "overpriced",
+    "unavailable",
+    "out of stock",
+  ];
+
+  const positiveNotes: string[] = [];
+  const negativeNotes: string[] = [];
+  const neutralNotes: string[] = [];
+
+  itemsWithNotes.forEach((item) => {
+    const note = item.note!.toLowerCase();
+    const hasPositive = positiveKeywords.some((keyword) =>
+      note.includes(keyword)
+    );
+    const hasNegative = negativeKeywords.some((keyword) =>
+      note.includes(keyword)
+    );
+
+    const noteEntry = `• ${item.name}: ${item.note}`;
+
+    if (hasPositive && !hasNegative) {
+      positiveNotes.push(noteEntry);
+    } else if (hasNegative && !hasPositive) {
+      negativeNotes.push(noteEntry);
+    } else {
+      neutralNotes.push(noteEntry);
+    }
+  });
+
+  // Build summary sections
+  if (positiveNotes.length > 0) {
+    summary += "✅ Highlights:\n" + positiveNotes.join("\n") + "\n\n";
+  }
+
+  if (negativeNotes.length > 0) {
+    summary +=
+      "⚠️ Notes for improvement:\n" + negativeNotes.join("\n") + "\n\n";
+  }
+
+  if (neutralNotes.length > 0) {
+    summary += "📝 General observations:\n" + neutralNotes.join("\n") + "\n\n";
+  }
+
+  summary += `Total items with notes: ${itemsWithNotes.length}/${items.length}`;
+
+  return summary.trim();
+};
+
 // Batch operations for performance
 export const completeMarketRun = async (runId: string): Promise<void> => {
   try {
+    // Get the current run to access items and generate summary
+    const currentRun = await getMarketRun(runId);
+    if (!currentRun) {
+      throw new Error("Market run not found");
+    }
+
+    // Generate summary from item notes
+    const summary = generateRunSummary(currentRun.items);
+
     const batch = writeBatch(db);
     const runRef = doc(db, "marketRuns", runId);
 
     batch.update(runRef, {
       status: "completed",
+      notes: summary,
       updatedAt: serverTimestamp(),
     });
 

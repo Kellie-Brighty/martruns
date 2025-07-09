@@ -26,6 +26,15 @@ import {
   X,
   CalendarClock,
   Edit,
+  MessageSquare,
+  TrendingUp,
+  TrendingDown,
+  Activity,
+  Brain,
+  PieChart,
+  ArrowUp,
+  ArrowDown,
+  Minus,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -33,11 +42,35 @@ import { useMarketRuns } from "../hooks/useMarketRuns";
 import type { MarketItem } from "../lib/firestore";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { ToastContainer, useToast } from "./Toast";
+import { NoteModal } from "./NoteModal";
+import { AnalyticsService } from "../lib/analytics";
 
 // Utility function for user-friendly time formatting
-const formatRelativeTime = (date: string | Date): string => {
+const formatRelativeTime = (date: string | Date | any): string => {
+  // Handle null/undefined dates
+  if (!date) {
+    return "Unknown date";
+  }
+
   const now = new Date();
-  const targetDate = new Date(date);
+  let targetDate: Date;
+
+  // Handle Firestore timestamp objects
+  if (date && typeof date === "object" && typeof date.toDate === "function") {
+    targetDate = date.toDate();
+  } else if (date && typeof date === "object" && date.seconds) {
+    // Handle Firestore timestamp-like objects
+    targetDate = new Date(date.seconds * 1000);
+  } else {
+    // Handle string or Date objects
+    targetDate = new Date(date);
+  }
+
+  // Check if the date is valid
+  if (isNaN(targetDate.getTime())) {
+    return "Invalid date";
+  }
+
   const diffInMs = now.getTime() - targetDate.getTime();
   const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
   const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
@@ -233,6 +266,7 @@ const Dashboard: React.FC = () => {
     setCurrentRunId,
     addItem,
     toggleItemComplete,
+    toggleItemCompleteWithNote,
     removeItem,
 
     completeRun,
@@ -288,6 +322,14 @@ const Dashboard: React.FC = () => {
   const [showScheduledRuns, setShowScheduledRuns] = useState(false);
   const [_selectedScheduledRun, setSelectedScheduledRun] = useState<any>(null);
 
+  // Note modal state
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [noteModalItem, setNoteModalItem] = useState<{
+    id: string;
+    name: string;
+    currentNote?: string;
+  } | null>(null);
+
   // Weekly challenges state
   const [weeklyChallenges, _setWeeklyChallenges] = useState<WeeklyChallenge[]>([
     {
@@ -321,17 +363,54 @@ const Dashboard: React.FC = () => {
     async (itemId: string) => {
       try {
         const item = currentRun?.items.find((i) => i.id === itemId);
-        await toggleItemComplete(itemId);
+        if (!item) return;
 
-        if (item && !item.completed) {
-          success(`${item.name} completed!`);
+        // If item is not completed, show note modal
+        if (!item.completed) {
+          setNoteModalItem({
+            id: itemId,
+            name: item.name,
+            currentNote: item.note || "",
+          });
+          setShowNoteModal(true);
+          return;
         }
+
+        // If item is already completed, just toggle without note
+        await toggleItemComplete(itemId);
+        success(`${item.name} marked as incomplete`);
       } catch (error) {
         console.error("Failed to toggle item:", error);
       }
     },
-    [toggleItemComplete, currentRun, success]
+    [currentRun, toggleItemComplete, success]
   );
+
+  const handleNoteModalSave = useCallback(
+    async (note: string) => {
+      if (!noteModalItem) return;
+
+      try {
+        await toggleItemCompleteWithNote(noteModalItem.id, note);
+        const item = currentRun?.items.find((i) => i.id === noteModalItem.id);
+        if (item) {
+          if (note.trim()) {
+            success(`${item.name} completed with note!`);
+          } else {
+            success(`${item.name} completed!`);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to complete item with note:", error);
+      }
+    },
+    [noteModalItem, toggleItemCompleteWithNote, currentRun, success]
+  );
+
+  const handleNoteModalClose = useCallback(() => {
+    setShowNoteModal(false);
+    setNoteModalItem(null);
+  }, []);
 
   const handleRemoveItem = useCallback(
     async (itemId: string) => {
@@ -742,6 +821,11 @@ const Dashboard: React.FC = () => {
                           >
                             {item.name}
                           </span>
+                          {item.note && item.note.trim() && (
+                            <div title={`Note: ${item.note}`}>
+                              <MessageSquare className="w-3 h-3 sm:w-4 sm:h-4 text-blue-400 flex-shrink-0" />
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center justify-between sm:justify-end space-x-2 ml-8 sm:ml-0">
                           {item.estimated_price && (
@@ -931,40 +1015,345 @@ const Dashboard: React.FC = () => {
     ]
   );
 
-  const AnalyticsContent = useMemo(
-    () => (
-      <div className="space-y-6">
-        <h2 className="text-2xl font-bold text-emerald-400">Analytics</h2>
+  const AnalyticsContent = useMemo(() => {
+    // Calculate analytics data
+    const spendingAnalytics =
+      AnalyticsService.calculateSpendingAnalytics(marketRuns);
+    const categorySpending =
+      AnalyticsService.calculateCategorySpending(marketRuns);
+    const predictions = AnalyticsService.generateSpendingPrediction(marketRuns);
+    const smartInsights = AnalyticsService.generateSmartInsights(marketRuns);
+
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        {/* Header */}
+        <div className="px-1">
+          <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-emerald-400">Smart Analytics</h2>
+          <p className="text-sm text-slate-400 mt-1">Your personalized shopping insights</p>
+        </div>
+
+        {/* Smart Insights Cards */}
+        {smartInsights.length > 0 && (
+          <div className="bg-slate-800/40 backdrop-blur-xl rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-slate-700/50">
+            <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center">
+              <Brain className="w-4 h-4 sm:w-5 sm:h-5 mr-2 text-purple-400" />
+              Smart Insights
+            </h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+              {smartInsights.map((insight, index) => (
+                <div
+                  key={index}
+                  className={`p-3 sm:p-4 rounded-lg sm:rounded-xl border transition-colors ${
+                    insight.type === "success"
+                      ? "bg-emerald-500/10 border-emerald-500/30"
+                      : insight.type === "warning"
+                      ? "bg-orange-500/10 border-orange-500/30"
+                      : insight.type === "info"
+                      ? "bg-blue-500/10 border-blue-500/30"
+                      : "bg-purple-500/10 border-purple-500/30"
+                  }`}
+                >
+                  <div className="flex items-start space-x-3">
+                    <span className="text-xl sm:text-2xl flex-shrink-0">{insight.icon}</span>
+                    <div className="min-w-0 flex-1">
+                      <h4
+                        className={`font-semibold text-sm sm:text-base ${
+                          insight.type === "success"
+                            ? "text-emerald-400"
+                            : insight.type === "warning"
+                            ? "text-orange-400"
+                            : insight.type === "info"
+                            ? "text-blue-400"
+                            : "text-purple-400"
+                        }`}
+                      >
+                        {insight.title}
+                      </h4>
+                      <p className="text-slate-300 text-xs sm:text-sm mt-1 leading-relaxed">
+                        {insight.message}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Spending Overview */}
+        <div className="bg-slate-800/40 backdrop-blur-xl rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-slate-700/50">
+          <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center">
+            <Activity className="w-4 h-4 sm:w-5 sm:h-5 mr-2 text-emerald-400" />
+            Spending Overview
+          </h3>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="text-center p-3 sm:p-4 bg-slate-800/30 rounded-lg sm:rounded-xl">
+              <p className="text-lg sm:text-xl lg:text-2xl font-bold text-emerald-400 truncate">
+                {selectedCurrency.symbol}
+                {spendingAnalytics.totalSpent.toFixed(0)}
+              </p>
+              <p className="text-slate-400 text-xs sm:text-sm mt-1">Total Spent</p>
+            </div>
+            <div className="text-center p-3 sm:p-4 bg-slate-800/30 rounded-lg sm:rounded-xl">
+              <p className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-400 truncate">
+                {selectedCurrency.symbol}
+                {spendingAnalytics.averageSpending.toFixed(0)}
+              </p>
+              <p className="text-slate-400 text-xs sm:text-sm mt-1">Avg per Run</p>
+            </div>
+            <div className="text-center p-3 sm:p-4 bg-slate-800/30 rounded-lg sm:rounded-xl col-span-2 lg:col-span-1">
+              <div className="flex items-center justify-center space-x-1">
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-400">
+                  {spendingAnalytics.budgetSuccessRate.toFixed(0)}%
+                </p>
+                {spendingAnalytics.budgetSuccessRate >= 70 ? (
+                  <ArrowUp className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-400" />
+                ) : spendingAnalytics.budgetSuccessRate <= 30 ? (
+                  <ArrowDown className="w-3 h-3 sm:w-4 sm:h-4 text-red-400" />
+                ) : (
+                  <Minus className="w-3 h-3 sm:w-4 sm:h-4 text-orange-400" />
+                )}
+              </div>
+              <p className="text-slate-400 text-xs sm:text-sm mt-1">Budget Success</p>
+            </div>
+            <div className="text-center p-3 sm:p-4 bg-slate-800/30 rounded-lg sm:rounded-xl col-span-2 lg:col-span-1">
+              <div className="flex items-center justify-center space-x-1">
+                <p
+                  className={`text-lg sm:text-xl lg:text-2xl font-bold truncate ${
+                    spendingAnalytics.totalSaved >= 0
+                      ? "text-emerald-400"
+                      : "text-red-400"
+                  }`}
+                >
+                  {selectedCurrency.symbol}
+                  {Math.abs(spendingAnalytics.totalSaved).toFixed(0)}
+                </p>
+                {spendingAnalytics.totalSaved >= 0 ? (
+                  <ArrowDown className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-400" />
+                ) : (
+                  <ArrowUp className="w-3 h-3 sm:w-4 sm:h-4 text-red-400" />
+                )}
+              </div>
+              <p className="text-slate-400 text-xs sm:text-sm mt-1">
+                {spendingAnalytics.totalSaved >= 0 ? "Saved" : "Over Budget"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Spending Trend */}
+        <div className="bg-slate-800/40 backdrop-blur-xl rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-slate-700/50">
+          <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center">
+            {spendingAnalytics.spendingTrend === "increasing" ? (
+              <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 mr-2 text-red-400" />
+            ) : spendingAnalytics.spendingTrend === "decreasing" ? (
+              <TrendingDown className="w-4 h-4 sm:w-5 sm:h-5 mr-2 text-emerald-400" />
+            ) : (
+              <Activity className="w-4 h-4 sm:w-5 sm:h-5 mr-2 text-blue-400" />
+            )}
+            Spending Trend
+          </h3>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+            <div>
+              <p className="text-xl sm:text-2xl font-bold text-white mb-2">
+                {spendingAnalytics.spendingTrend === "increasing"
+                  ? "Increasing"
+                  : spendingAnalytics.spendingTrend === "decreasing"
+                  ? "Decreasing"
+                  : "Stable"}
+              </p>
+              <p className="text-slate-400 text-sm sm:text-base">
+                {spendingAnalytics.trendPercentage.toFixed(1)}% change from previous period
+              </p>
+            </div>
+            <div
+              className={`text-3xl sm:text-4xl self-center sm:self-auto ${
+                spendingAnalytics.spendingTrend === "increasing"
+                  ? "text-red-400"
+                  : spendingAnalytics.spendingTrend === "decreasing"
+                  ? "text-emerald-400"
+                  : "text-blue-400"
+              }`}
+            >
+              {spendingAnalytics.spendingTrend === "increasing"
+                ? "📈"
+                : spendingAnalytics.spendingTrend === "decreasing"
+                ? "📉"
+                : "📊"}
+            </div>
+          </div>
+        </div>
+
+        {/* Spending Predictions */}
+        {predictions.confidence > 0 && (
+          <div className="bg-slate-800/40 backdrop-blur-xl rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-slate-700/50">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 sm:mb-4">
+              <h3 className="text-base sm:text-lg font-semibold text-white flex items-center mb-2 sm:mb-0">
+                <Brain className="w-4 h-4 sm:w-5 sm:h-5 mr-2 text-purple-400" />
+                Smart Predictions
+              </h3>
+              <span className="px-2 py-1 text-xs bg-purple-500/20 text-purple-400 rounded-full self-start sm:self-auto">
+                {predictions.confidence}% confidence
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+              {/* Next Week Prediction */}
+              <div className="space-y-3 sm:space-y-4">
+                <div className="text-center p-3 sm:p-4 bg-slate-800/30 rounded-lg sm:rounded-xl">
+                  <p className="text-xs sm:text-sm text-slate-400 mb-2">
+                    Next Week Prediction
+                  </p>
+                  <p className="text-2xl sm:text-3xl font-bold text-purple-400 truncate">
+                    {selectedCurrency.symbol}
+                    {predictions.nextWeekPrediction.toFixed(0)}
+                  </p>
+                  <div className="flex items-center justify-center space-x-1 mt-2">
+                    {predictions.trendDirection === "up" ? (
+                      <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4 text-red-400" />
+                    ) : predictions.trendDirection === "down" ? (
+                      <TrendingDown className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-400" />
+                    ) : (
+                      <Minus className="w-3 h-3 sm:w-4 sm:h-4 text-blue-400" />
+                    )}
+                    <span className="text-xs text-slate-400">
+                      Trending {predictions.trendDirection}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-center p-3 sm:p-4 bg-slate-800/30 rounded-lg sm:rounded-xl">
+                  <p className="text-xs sm:text-sm text-slate-400 mb-2">
+                    Recommended Budget
+                  </p>
+                  <p className="text-xl sm:text-2xl font-bold text-emerald-400 truncate">
+                    {selectedCurrency.symbol}
+                    {predictions.recommendedBudget.toFixed(0)}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    20% buffer included
+                  </p>
+                </div>
+              </div>
+
+              {/* 4-Week Forecast */}
+              <div>
+                <p className="text-xs sm:text-sm text-slate-400 mb-3">4-Week Forecast</p>
+                <div className="space-y-2">
+                  {predictions.next4WeeksPrediction.map((amount, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-2 sm:p-3 bg-slate-800/30 rounded-lg"
+                    >
+                      <span className="text-xs sm:text-sm text-slate-300">
+                        Week {index + 1}
+                      </span>
+                      <span className="font-semibold text-white text-sm sm:text-base">
+                        {selectedCurrency.symbol}
+                        {amount.toFixed(0)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Prediction Insights */}
+            {predictions.insights.length > 0 && (
+              <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg sm:rounded-xl">
+                <h4 className="text-xs sm:text-sm font-semibold text-purple-400 mb-2">
+                  AI Insights
+                </h4>
+                <ul className="space-y-1">
+                  {predictions.insights.map((insight, index) => (
+                    <li
+                      key={index}
+                      className="text-xs sm:text-sm text-slate-300 flex items-start leading-relaxed"
+                    >
+                      <span className="text-purple-400 mr-2 flex-shrink-0">•</span>
+                      <span>{insight}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Category Breakdown */}
+        {categorySpending.length > 0 && (
+          <div className="bg-slate-800/40 backdrop-blur-xl rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-slate-700/50">
+            <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center">
+              <PieChart className="w-4 h-4 sm:w-5 sm:h-5 mr-2 text-orange-400" />
+              Category Breakdown
+            </h3>
+            <div className="space-y-3">
+              {categorySpending.slice(0, 5).map((category, index) => (
+                <div
+                  key={category.category}
+                  className="flex items-center justify-between p-2 sm:p-0"
+                >
+                  <div className="flex items-center space-x-3 flex-1 min-w-0">
+                    <div
+                      className={`w-3 h-3 rounded-full flex-shrink-0 ${
+                        index === 0
+                          ? "bg-emerald-500"
+                          : index === 1
+                          ? "bg-orange-500"
+                          : index === 2
+                          ? "bg-blue-500"
+                          : index === 3
+                          ? "bg-purple-500"
+                          : "bg-slate-500"
+                      }`}
+                    />
+                    <span className="text-white font-medium text-sm sm:text-base truncate">
+                      {category.category}
+                    </span>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-white font-semibold text-sm sm:text-base">
+                      {selectedCurrency.symbol}
+                      {category.amount.toFixed(0)}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {category.percentage.toFixed(1)}%
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Chef Level Progression */}
         {userStats && (
-          <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-              <ChefHat className="w-5 h-5 mr-2 text-emerald-400" />
+          <div className="bg-slate-800/40 backdrop-blur-xl rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-slate-700/50">
+            <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center">
+              <ChefHat className="w-4 h-4 sm:w-5 sm:h-5 mr-2 text-emerald-400" />
               Chef Level Progression
             </h3>
             {(() => {
               const chefLevel = getChefLevel(userStats.totalRuns);
               return (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
                     <div className="flex items-center space-x-3">
-                      <span className="text-2xl">{chefLevel.icon}</span>
+                      <span className="text-xl sm:text-2xl">{chefLevel.icon}</span>
                       <div>
-                        <p className="font-semibold text-white">
+                        <p className="font-semibold text-white text-sm sm:text-base">
                           {chefLevel.level}
                         </p>
-                        <p className="text-sm text-slate-400">
+                        <p className="text-xs sm:text-sm text-slate-400">
                           {userStats.totalRuns} market runs completed
                         </p>
                       </div>
                     </div>
                     {chefLevel.nextTarget > 0 && (
-                      <div className="text-right">
-                        <p className="text-sm text-slate-400">Next Level</p>
-                        <p className="font-semibold text-emerald-400">
-                          {chefLevel.nextTarget - userStats.totalRuns} runs to
-                          go
+                      <div className="text-left sm:text-right">
+                        <p className="text-xs sm:text-sm text-slate-400">Next Level</p>
+                        <p className="font-semibold text-emerald-400 text-sm sm:text-base">
+                          {chefLevel.nextTarget - userStats.totalRuns} runs to go
                         </p>
                       </div>
                     )}
@@ -989,31 +1378,31 @@ const Dashboard: React.FC = () => {
         )}
 
         {/* Weekly Challenges */}
-        <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
-          <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-            <Target className="w-5 h-5 mr-2 text-orange-400" />
+        <div className="bg-slate-800/40 backdrop-blur-xl rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-slate-700/50">
+          <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center">
+            <Target className="w-4 h-4 sm:w-5 sm:h-5 mr-2 text-orange-400" />
             Weekly Challenges
           </h3>
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {weeklyChallenges.map((challenge) => (
               <div
                 key={challenge.id}
-                className="bg-slate-800/30 rounded-xl p-4"
+                className="bg-slate-800/30 rounded-lg sm:rounded-xl p-3 sm:p-4"
               >
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-semibold text-white">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 space-y-2 sm:space-y-0">
+                  <h4 className="font-semibold text-white text-sm sm:text-base">
                     {challenge.title}
                   </h4>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm text-slate-400">
+                  <div className="flex items-center space-x-2 self-start sm:self-auto">
+                    <span className="text-xs sm:text-sm text-slate-400">
                       {challenge.progress}/{challenge.target}
                     </span>
                     {challenge.progress >= challenge.target && (
-                      <Trophy className="w-4 h-4 text-yellow-400" />
+                      <Trophy className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-400" />
                     )}
                   </div>
                 </div>
-                <p className="text-sm text-slate-300 mb-3">
+                <p className="text-xs sm:text-sm text-slate-300 mb-3 leading-relaxed">
                   {challenge.description}
                 </p>
                 <div className="w-full bg-slate-700 rounded-full h-2 mb-2">
@@ -1027,7 +1416,7 @@ const Dashboard: React.FC = () => {
                     }}
                   />
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-1 sm:space-y-0">
                   <span className="text-xs text-slate-400">
                     Reward: {challenge.reward}
                   </span>
@@ -1041,34 +1430,9 @@ const Dashboard: React.FC = () => {
             ))}
           </div>
         </div>
-
-        {/* Overall Statistics */}
-        {userStats && (
-          <div className="bg-slate-800/40 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
-            <h3 className="text-lg font-semibold text-white mb-4">
-              Overall Statistics
-            </h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="text-center">
-                <p className="text-2xl font-bold text-emerald-400">
-                  {userStats.totalRuns}
-                </p>
-                <p className="text-slate-400">Total Runs</p>
-              </div>
-              <div className="text-center">
-                <p className="text-2xl font-bold text-orange-400">
-                  {selectedCurrency.symbol}
-                  {userStats.totalSaved.toFixed(0)}
-                </p>
-                <p className="text-slate-400">Total Saved</p>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
-    ),
-    [userStats, selectedCurrency, weeklyChallenges]
-  );
+    );
+  }, [marketRuns, userStats, selectedCurrency, weeklyChallenges]);
 
   const ProfileContent = useMemo(
     () => (
@@ -1543,15 +1907,22 @@ const Dashboard: React.FC = () => {
                             <Check className="w-3 h-3 text-white" />
                           )}
                         </div>
-                        <span
-                          className={`font-medium text-sm truncate ${
-                            item.completed
-                              ? "line-through text-slate-400"
-                              : "text-white"
-                          }`}
-                        >
-                          {item.name}
-                        </span>
+                        <div className="flex items-center space-x-2 flex-1 min-w-0">
+                          <span
+                            className={`font-medium text-sm truncate ${
+                              item.completed
+                                ? "line-through text-slate-400"
+                                : "text-white"
+                            }`}
+                          >
+                            {item.name}
+                          </span>
+                          {item.note && item.note.trim() && (
+                            <div title={`Note: ${item.note}`}>
+                              <MessageSquare className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <div className="flex items-center space-x-2">
                         {item.estimated_price && (
@@ -1735,6 +2106,17 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Note Modal */}
+      {showNoteModal && noteModalItem && (
+        <NoteModal
+          isOpen={showNoteModal}
+          itemName={noteModalItem.name}
+          currentNote={noteModalItem.currentNote}
+          onSave={handleNoteModalSave}
+          onClose={handleNoteModalClose}
+        />
       )}
     </div>
   );

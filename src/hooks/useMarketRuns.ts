@@ -13,7 +13,6 @@ import {
   deleteMarketRun,
   completeMarketRun,
   duplicateMarketRun,
-  
 } from "../lib/firestore";
 
 interface UseMarketRunsReturn {
@@ -25,7 +24,11 @@ interface UseMarketRunsReturn {
   error: string | null;
 
   // Actions
-  createNewRun: (title: string, budget?: number, scheduledDate?: string) => Promise<string>;
+  createNewRun: (
+    title: string,
+    budget?: number,
+    scheduledDate?: string
+  ) => Promise<string>;
   setCurrentRunId: (runId: string | null) => void;
   addItem: (
     item: Omit<MarketItem, "id" | "createdAt" | "updatedAt">
@@ -33,6 +36,7 @@ interface UseMarketRunsReturn {
   updateItem: (itemId: string, updates: Partial<MarketItem>) => Promise<void>;
   removeItem: (itemId: string) => Promise<void>;
   toggleItemComplete: (itemId: string) => Promise<void>;
+  toggleItemCompleteWithNote: (itemId: string, note?: string) => Promise<void>;
   updateRun: (updates: Partial<MarketRun>) => Promise<void>;
   deleteRun: (runId: string) => Promise<void>;
   completeRun: (runId: string) => Promise<void>;
@@ -122,11 +126,20 @@ export const useMarketRuns = (): UseMarketRunsReturn => {
 
   // Actions
   const createNewRun = useCallback(
-    async (title: string, budget?: number, scheduledDate?: string): Promise<string> => {
+    async (
+      title: string,
+      budget?: number,
+      scheduledDate?: string
+    ): Promise<string> => {
       if (!currentUser) throw new Error("User not authenticated");
 
       try {
-        const runId = await createMarketRun(currentUser.uid, title, budget, scheduledDate);
+        const runId = await createMarketRun(
+          currentUser.uid,
+          title,
+          budget,
+          scheduledDate
+        );
         setCurrentRunId(runId);
         return runId;
       } catch (err) {
@@ -210,6 +223,34 @@ export const useMarketRuns = (): UseMarketRunsReturn => {
 
       try {
         await updateItem(itemId, { completed: !item.completed });
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to toggle item";
+        setError(errorMessage);
+        throw err;
+      }
+    },
+    [currentRun, updateItem]
+  );
+
+  const toggleItemCompleteWithNote = useCallback(
+    async (itemId: string, note?: string): Promise<void> => {
+      if (!currentRun) throw new Error("No active market run");
+
+      const item = currentRun.items.find((i) => i.id === itemId);
+      if (!item) throw new Error("Item not found");
+
+      try {
+        const updates: Partial<MarketItem> = {
+          completed: !item.completed,
+        };
+
+        // Only add note if item is being completed (not unchecked) and note is provided
+        if (!item.completed && note && note.trim()) {
+          updates.note = note.trim();
+        }
+
+        await updateItem(itemId, updates);
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to toggle item";
@@ -360,6 +401,7 @@ export const useMarketRuns = (): UseMarketRunsReturn => {
     updateItem,
     removeItem,
     toggleItemComplete,
+    toggleItemCompleteWithNote,
     updateRun,
     deleteRun,
     completeRun,
