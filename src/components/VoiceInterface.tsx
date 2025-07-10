@@ -16,6 +16,7 @@ import {
   Wifi,
   Shield,
   Globe,
+  DollarSign,
 } from "lucide-react";
 import {
   getVoiceService,
@@ -183,79 +184,6 @@ export const VoiceInterface: React.FC<VoiceInterfaceProps> = ({
     };
   }, [isOpen]);
 
-  // Process voice command
-  const processVoiceCommand = useCallback(
-    async (transcript: string) => {
-      setVoiceState("processing");
-
-      try {
-        const command = commandProcessor.current.parseCommand(
-          transcript,
-          context
-        );
-        setSession((prev) => ({ ...prev, lastCommand: command }));
-
-        if (command.intent === "unknown") {
-          const errorMsg =
-            "I didn't understand that command. Try again or ask for help.";
-          setError({
-            type: "service",
-            code: "COMMAND_NOT_UNDERSTOOD",
-            message: errorMsg,
-            suggestion:
-              "Try speaking more clearly or use one of the quick commands below",
-            recoverable: true,
-          });
-          speak(errorMsg);
-          setVoiceState("error");
-          return;
-        }
-
-        const result = await onCommand(command);
-        const responseMessage = commandProcessor.current.generateResponse(
-          command,
-          result,
-          context
-        );
-
-        setFeedback(responseMessage);
-
-        if (result.success) {
-          speak(responseMessage);
-          setVoiceState("speaking");
-        } else {
-          setError({
-            type: "service",
-            code: "COMMAND_FAILED",
-            message: result.message,
-            suggestion:
-              "Try rephrasing your command or check if you have an active shopping list",
-            recoverable: true,
-          });
-          setVoiceState("error");
-        }
-
-        // Auto-clear feedback after 5 seconds
-        if (feedbackTimeoutRef.current)
-          clearTimeout(feedbackTimeoutRef.current);
-        feedbackTimeoutRef.current = setTimeout(() => {
-          setFeedback("");
-          setError(null);
-        }, 5000);
-      } catch (err) {
-        setError({
-          type: "service",
-          code: "PROCESSING_FAILED",
-          message: "Failed to process command",
-          suggestion: "Try again or restart the voice assistant",
-          recoverable: true,
-        });
-        setVoiceState("error");
-      }
-    },
-    [context, onCommand]
-  );
-
   // Toggle listening
   const toggleListening = useCallback(async () => {
     if (session.isListening) {
@@ -315,6 +243,97 @@ export const VoiceInterface: React.FC<VoiceInterfaceProps> = ({
       }
     },
     [isMuted, isOpen, error, session.isListening, toggleListening]
+  );
+
+  // Process voice command
+  const processVoiceCommand = useCallback(
+    async (transcript: string) => {
+      setVoiceState("processing");
+
+      try {
+        const command = commandProcessor.current.parseCommand(
+          transcript,
+          context
+        );
+        setSession((prev) => ({ ...prev, lastCommand: command }));
+
+        if (command.intent === "unknown") {
+          const errorMsg =
+            "I didn't understand that command. Try again or ask for help.";
+          setError({
+            type: "service",
+            code: "COMMAND_NOT_UNDERSTOOD",
+            message: errorMsg,
+            suggestion:
+              "Try speaking more clearly or use one of the quick commands below",
+            recoverable: true,
+          });
+          speak(errorMsg);
+          setVoiceState("error");
+          return;
+        }
+
+        // Special handling for create_run to ensure we capture both name and budget
+        if (command.intent === "create_run") {
+          let confirmationMessage = `Creating a new shopping list`;
+
+          if (
+            command.entity &&
+            command.entity !== `Market Run - ${new Date().toLocaleDateString()}`
+          ) {
+            confirmationMessage += ` called "${command.entity}"`;
+          }
+
+          if (command.amount) {
+            confirmationMessage += ` with a budget of ${context.currency}${command.amount}`;
+          }
+
+          speak(confirmationMessage);
+        }
+
+        const result = await onCommand(command);
+        const responseMessage = commandProcessor.current.generateResponse(
+          command,
+          result,
+          context
+        );
+
+        setFeedback(responseMessage);
+
+        if (result.success) {
+          speak(responseMessage);
+          setVoiceState("speaking");
+        } else {
+          setError({
+            type: "service",
+            code: "COMMAND_FAILED",
+            message: result.message,
+            suggestion:
+              "Try rephrasing your command or check if you have an active shopping list",
+            recoverable: true,
+          });
+          setVoiceState("error");
+        }
+
+        // Auto-clear feedback after 5 seconds
+        if (feedbackTimeoutRef.current)
+          clearTimeout(feedbackTimeoutRef.current);
+        feedbackTimeoutRef.current = setTimeout(() => {
+          setFeedback("");
+          setError(null);
+        }, 5000);
+      } catch (err) {
+        setError({
+          type: "service",
+          code: "PROCESSING_FAILED",
+          message: "Failed to process command",
+          suggestion: "Try again or restart the voice assistant",
+          recoverable: true,
+        });
+        setVoiceState("error");
+      }
+    },
+    [context, onCommand, speak]
   );
 
   // Retry function for recoverable errors
@@ -592,6 +611,19 @@ export const VoiceInterface: React.FC<VoiceInterfaceProps> = ({
                     <MessageCircle className="w-4 h-4 text-emerald-400" />
                     <span className="text-white text-sm">
                       Create new shopping list
+                    </span>
+                  </button>
+                  <button
+                    onClick={() =>
+                      handleQuickCommand(
+                        "Create shopping list for groceries with a budget of $100"
+                      )
+                    }
+                    className="w-full flex items-center space-x-3 p-3 rounded-xl bg-slate-800/30 border border-slate-700/50 text-left hover:bg-slate-700/30 transition-colors"
+                  >
+                    <DollarSign className="w-4 h-4 text-orange-400" />
+                    <span className="text-white text-sm">
+                      Create list with budget
                     </span>
                   </button>
                   <button
