@@ -14,6 +14,10 @@ import {
   completeMarketRun,
   duplicateMarketRun,
 } from "../lib/firestore";
+import type {
+  VoiceCommand,
+  CommandResponse,
+} from "../services/CommandProcessor";
 
 interface UseMarketRunsReturn {
   // Data
@@ -41,6 +45,7 @@ interface UseMarketRunsReturn {
   deleteRun: (runId: string) => Promise<void>;
   completeRun: (runId: string) => Promise<void>;
   duplicateRun: (runId: string, title: string) => Promise<string>;
+  handleVoiceCommand: (command: VoiceCommand) => Promise<CommandResponse>;
 
   // Computed values
   currentRunStats: {
@@ -386,6 +391,276 @@ export const useMarketRuns = (): UseMarketRunsReturn => {
     return baseStats;
   }, [currentRun]);
 
+  // Voice command handler
+  const handleVoiceCommand = useCallback(
+    async (command: VoiceCommand): Promise<CommandResponse> => {
+      try {
+        switch (command.intent) {
+          case "create_run":
+            if (!command.entity) {
+              return { success: false, message: "Please specify a run title" };
+            }
+            const runId = await createNewRun(command.entity, command.amount);
+            return {
+              success: true,
+              message: `Created "${command.entity}"${
+                command.amount ? ` with budget $${command.amount}` : ""
+              }`,
+              data: { runId },
+            };
+
+          case "add_item":
+            if (!command.entity) {
+              return { success: false, message: "Please specify an item name" };
+            }
+            const newItem: Omit<MarketItem, "id" | "createdAt" | "updatedAt"> =
+              {
+                name: command.entity,
+                category: "other",
+                completed: false,
+                ...(command.amount && { estimated_price: command.amount }),
+              };
+            await addItem(newItem);
+            return {
+              success: true,
+              message: `Added ${command.entity} to your list`,
+              data: { item: newItem },
+            };
+
+          case "complete_item":
+            if (!command.entity) {
+              return { success: false, message: "Please specify an item name" };
+            }
+            if (!currentRun) {
+              return {
+                success: false,
+                message: "No active shopping list found",
+              };
+            }
+            const itemToComplete = currentRun.items.find((item) =>
+              item.name.toLowerCase().includes(command.entity!.toLowerCase())
+            );
+            if (!itemToComplete) {
+              return {
+                success: false,
+                message: `"${command.entity}" not found in your list`,
+              };
+            }
+            if (command.note) {
+              await toggleItemCompleteWithNote(itemToComplete.id, command.note);
+            } else {
+              await toggleItemComplete(itemToComplete.id);
+            }
+            return {
+              success: true,
+              message: `Marked ${itemToComplete.name} as complete`,
+              data: { item: itemToComplete },
+            };
+
+          case "remove_item":
+            if (!command.entity) {
+              return { success: false, message: "Please specify an item name" };
+            }
+            if (!currentRun) {
+              return {
+                success: false,
+                message: "No active shopping list found",
+              };
+            }
+            const itemToRemove = currentRun.items.find((item) =>
+              item.name.toLowerCase().includes(command.entity!.toLowerCase())
+            );
+            if (!itemToRemove) {
+              return {
+                success: false,
+                message: `"${command.entity}" not found in your list`,
+              };
+            }
+            await removeItem(itemToRemove.id);
+            return {
+              success: true,
+              message: `Removed ${itemToRemove.name} from your list`,
+              data: { item: itemToRemove },
+            };
+
+          case "add_note":
+            if (!command.entity || !command.note) {
+              return {
+                success: false,
+                message: "Please specify both item name and note",
+              };
+            }
+            if (!currentRun) {
+              return {
+                success: false,
+                message: "No active shopping list found",
+              };
+            }
+            const itemForNote = currentRun.items.find((item) =>
+              item.name.toLowerCase().includes(command.entity!.toLowerCase())
+            );
+            if (!itemForNote) {
+              return {
+                success: false,
+                message: `"${command.entity}" not found in your list`,
+              };
+            }
+            await updateItem(itemForNote.id, { note: command.note });
+            return {
+              success: true,
+              message: `Added note to ${itemForNote.name}`,
+              data: { item: itemForNote, note: command.note },
+            };
+
+          case "set_price":
+            if (!command.entity || !command.amount) {
+              return {
+                success: false,
+                message: "Please specify both item name and price",
+              };
+            }
+            if (!currentRun) {
+              return {
+                success: false,
+                message: "No active shopping list found",
+              };
+            }
+            const itemForPrice = currentRun.items.find((item) =>
+              item.name.toLowerCase().includes(command.entity!.toLowerCase())
+            );
+            if (!itemForPrice) {
+              return {
+                success: false,
+                message: `"${command.entity}" not found in your list`,
+              };
+            }
+            await updateItem(itemForPrice.id, {
+              estimated_price: command.amount,
+            });
+            return {
+              success: true,
+              message: `Set price for ${itemForPrice.name} to $${command.amount}`,
+              data: { item: itemForPrice, price: command.amount },
+            };
+
+          case "set_budget":
+            if (!command.amount) {
+              return {
+                success: false,
+                message: "Please specify a budget amount",
+              };
+            }
+            if (!currentRun) {
+              return {
+                success: false,
+                message: "No active shopping list found",
+              };
+            }
+            await updateRun({ budget: command.amount });
+            return {
+              success: true,
+              message: `Set budget to $${command.amount}`,
+              data: { budget: command.amount },
+            };
+
+          case "complete_run":
+            if (!currentRun) {
+              return {
+                success: false,
+                message: "No active shopping list found",
+              };
+            }
+            await completeRun(currentRun.id);
+            return {
+              success: true,
+              message: `Shopping run completed! Great job!`,
+              data: { run: currentRun },
+            };
+
+          case "list_items":
+            if (!currentRun || currentRun.items.length === 0) {
+              return { success: true, message: "Your shopping list is empty" };
+            }
+            const incompleteItems = currentRun.items.filter(
+              (item) => !item.completed
+            );
+            const completeItems = currentRun.items.filter(
+              (item) => item.completed
+            );
+            let listMessage = `You have ${currentRun.items.length} items. `;
+            if (incompleteItems.length > 0) {
+              listMessage += `Still need: ${incompleteItems
+                .slice(0, 3)
+                .map((item) => item.name)
+                .join(", ")}`;
+              if (incompleteItems.length > 3) {
+                listMessage += ` and ${incompleteItems.length - 3} more`;
+              }
+            }
+            if (completeItems.length > 0) {
+              listMessage += `. Completed: ${completeItems.length} items`;
+            }
+            return {
+              success: true,
+              message: listMessage,
+              data: {
+                items: currentRun.items,
+                incomplete: incompleteItems,
+                complete: completeItems,
+              },
+            };
+
+          case "budget_status":
+            if (!currentRun || !currentRun.budget) {
+              return {
+                success: true,
+                message: "No budget set for current shopping list",
+              };
+            }
+            const spent = currentRunStats.totalEstimated;
+            const remaining = currentRun.budget - spent;
+            let budgetMessage = `Budget: $${
+              currentRun.budget
+            }. Spent: $${spent.toFixed(2)}. `;
+            if (remaining >= 0) {
+              budgetMessage += `Remaining: $${remaining.toFixed(2)}`;
+            } else {
+              budgetMessage += `Over budget by $${Math.abs(remaining).toFixed(
+                2
+              )}`;
+            }
+            return {
+              success: true,
+              message: budgetMessage,
+              data: { budget: currentRun.budget, spent, remaining },
+            };
+
+          default:
+            return { success: false, message: "Unknown voice command" };
+        }
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error
+            ? err.message
+            : "Failed to execute voice command";
+        return { success: false, message: errorMessage };
+      }
+    },
+    [
+      currentUser,
+      currentRun,
+      currentRunStats,
+      createNewRun,
+      addItem,
+      toggleItemComplete,
+      toggleItemCompleteWithNote,
+      removeItem,
+      updateItem,
+      updateRun,
+      completeRun,
+    ]
+  );
+
   return {
     // Data
     marketRuns,
@@ -406,6 +681,7 @@ export const useMarketRuns = (): UseMarketRunsReturn => {
     deleteRun,
     completeRun,
     duplicateRun,
+    handleVoiceCommand,
 
     // Computed values
     currentRunStats,

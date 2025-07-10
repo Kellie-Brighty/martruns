@@ -43,7 +43,9 @@ import type { MarketItem } from "../lib/firestore";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { ToastContainer, useToast } from "./Toast";
 import { NoteModal } from "./NoteModal";
+import { VoiceInterface } from "./VoiceInterface";
 import { AnalyticsService } from "../lib/analytics";
+import type { CommandContext } from "../services/CommandProcessor";
 
 // Utility function for user-friendly time formatting
 const formatRelativeTime = (date: string | Date | any): string => {
@@ -268,10 +270,10 @@ const Dashboard: React.FC = () => {
     toggleItemComplete,
     toggleItemCompleteWithNote,
     removeItem,
-
     completeRun,
     deleteRun,
     currentRunStats,
+    handleVoiceCommand,
   } = useMarketRuns();
 
   const {
@@ -286,7 +288,7 @@ const Dashboard: React.FC = () => {
 
   // ALL useState hooks
   const [activeTab, setActiveTab] = useState<TabType>("home");
-  const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const [isVoiceActive, _setIsVoiceActive] = useState(false);
   const [newItemName, setNewItemName] = useState("");
   const [newItemCategory, setNewItemCategory] = useState("other");
   const [newItemPrice, setNewItemPrice] = useState("");
@@ -357,6 +359,9 @@ const Dashboard: React.FC = () => {
       reward: "Morning Glory Badge",
     },
   ]);
+
+  // Voice interface state
+  const [showVoiceInterface, setShowVoiceInterface] = useState(false);
 
   // ALL useCallback hooks
   const handleToggleItem = useCallback(
@@ -572,13 +577,6 @@ const Dashboard: React.FC = () => {
     }
   }, [currentRun, completeRun, achievement, currentRunStats.totalItems]);
 
-  const toggleVoice = useCallback(() => {
-    setIsVoiceActive((prev) => !prev);
-    if (!isVoiceActive) {
-      success("Voice Mode Activated!", "Listening for your commands...");
-    }
-  }, [isVoiceActive, success]);
-
   const handleSignOut = useCallback(async () => {
     try {
       await logout();
@@ -663,6 +661,29 @@ const Dashboard: React.FC = () => {
       );
     },
     [setCurrentRunId, achievement]
+  );
+
+  // Voice interface handlers
+  const toggleVoiceInterface = useCallback(() => {
+    setShowVoiceInterface(!showVoiceInterface);
+    if (!showVoiceInterface) {
+      success("Voice Assistant Activated!", "Say 'Hey MartRuns' to start");
+    }
+  }, [showVoiceInterface, success]);
+
+  const handleCloseVoiceInterface = useCallback(() => {
+    setShowVoiceInterface(false);
+  }, []);
+
+  // Voice command context
+  const voiceContext = useMemo(
+    (): CommandContext => ({
+      currentRun,
+      currentPage: activeTab,
+      recentCommands: [],
+      currency: selectedCurrency.symbol,
+    }),
+    [currentRun, activeTab, selectedCurrency]
   );
 
   // ALL useMemo hooks
@@ -1028,8 +1049,12 @@ const Dashboard: React.FC = () => {
       <div className="space-y-4 sm:space-y-6">
         {/* Header */}
         <div className="px-1">
-          <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-emerald-400">Smart Analytics</h2>
-          <p className="text-sm text-slate-400 mt-1">Your personalized shopping insights</p>
+          <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-emerald-400">
+            Smart Analytics
+          </h2>
+          <p className="text-sm text-slate-400 mt-1">
+            Your personalized shopping insights
+          </p>
         </div>
 
         {/* Smart Insights Cards */}
@@ -1054,7 +1079,9 @@ const Dashboard: React.FC = () => {
                   }`}
                 >
                   <div className="flex items-start space-x-3">
-                    <span className="text-xl sm:text-2xl flex-shrink-0">{insight.icon}</span>
+                    <span className="text-xl sm:text-2xl flex-shrink-0">
+                      {insight.icon}
+                    </span>
                     <div className="min-w-0 flex-1">
                       <h4
                         className={`font-semibold text-sm sm:text-base ${
@@ -1092,14 +1119,18 @@ const Dashboard: React.FC = () => {
                 {selectedCurrency.symbol}
                 {spendingAnalytics.totalSpent.toFixed(0)}
               </p>
-              <p className="text-slate-400 text-xs sm:text-sm mt-1">Total Spent</p>
+              <p className="text-slate-400 text-xs sm:text-sm mt-1">
+                Total Spent
+              </p>
             </div>
             <div className="text-center p-3 sm:p-4 bg-slate-800/30 rounded-lg sm:rounded-xl">
               <p className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-400 truncate">
                 {selectedCurrency.symbol}
                 {spendingAnalytics.averageSpending.toFixed(0)}
               </p>
-              <p className="text-slate-400 text-xs sm:text-sm mt-1">Avg per Run</p>
+              <p className="text-slate-400 text-xs sm:text-sm mt-1">
+                Avg per Run
+              </p>
             </div>
             <div className="text-center p-3 sm:p-4 bg-slate-800/30 rounded-lg sm:rounded-xl col-span-2 lg:col-span-1">
               <div className="flex items-center justify-center space-x-1">
@@ -1114,7 +1145,9 @@ const Dashboard: React.FC = () => {
                   <Minus className="w-3 h-3 sm:w-4 sm:h-4 text-orange-400" />
                 )}
               </div>
-              <p className="text-slate-400 text-xs sm:text-sm mt-1">Budget Success</p>
+              <p className="text-slate-400 text-xs sm:text-sm mt-1">
+                Budget Success
+              </p>
             </div>
             <div className="text-center p-3 sm:p-4 bg-slate-800/30 rounded-lg sm:rounded-xl col-span-2 lg:col-span-1">
               <div className="flex items-center justify-center space-x-1">
@@ -1163,7 +1196,8 @@ const Dashboard: React.FC = () => {
                   : "Stable"}
               </p>
               <p className="text-slate-400 text-sm sm:text-base">
-                {spendingAnalytics.trendPercentage.toFixed(1)}% change from previous period
+                {spendingAnalytics.trendPercentage.toFixed(1)}% change from
+                previous period
               </p>
             </div>
             <div
@@ -1238,7 +1272,9 @@ const Dashboard: React.FC = () => {
 
               {/* 4-Week Forecast */}
               <div>
-                <p className="text-xs sm:text-sm text-slate-400 mb-3">4-Week Forecast</p>
+                <p className="text-xs sm:text-sm text-slate-400 mb-3">
+                  4-Week Forecast
+                </p>
                 <div className="space-y-2">
                   {predictions.next4WeeksPrediction.map((amount, index) => (
                     <div
@@ -1270,7 +1306,9 @@ const Dashboard: React.FC = () => {
                       key={index}
                       className="text-xs sm:text-sm text-slate-300 flex items-start leading-relaxed"
                     >
-                      <span className="text-purple-400 mr-2 flex-shrink-0">•</span>
+                      <span className="text-purple-400 mr-2 flex-shrink-0">
+                        •
+                      </span>
                       <span>{insight}</span>
                     </li>
                   ))}
@@ -1339,7 +1377,9 @@ const Dashboard: React.FC = () => {
                 <div className="space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
                     <div className="flex items-center space-x-3">
-                      <span className="text-xl sm:text-2xl">{chefLevel.icon}</span>
+                      <span className="text-xl sm:text-2xl">
+                        {chefLevel.icon}
+                      </span>
                       <div>
                         <p className="font-semibold text-white text-sm sm:text-base">
                           {chefLevel.level}
@@ -1351,9 +1391,12 @@ const Dashboard: React.FC = () => {
                     </div>
                     {chefLevel.nextTarget > 0 && (
                       <div className="text-left sm:text-right">
-                        <p className="text-xs sm:text-sm text-slate-400">Next Level</p>
+                        <p className="text-xs sm:text-sm text-slate-400">
+                          Next Level
+                        </p>
                         <p className="font-semibold text-emerald-400 text-sm sm:text-base">
-                          {chefLevel.nextTarget - userStats.totalRuns} runs to go
+                          {chefLevel.nextTarget - userStats.totalRuns} runs to
+                          go
                         </p>
                       </div>
                     )}
@@ -1489,7 +1532,7 @@ const Dashboard: React.FC = () => {
           <h3 className="text-lg font-semibold text-white mb-4">Actions</h3>
           <div className="space-y-3">
             <button
-              onClick={toggleVoice}
+              onClick={toggleVoiceInterface}
               className={`w-full flex items-center justify-center space-x-2 p-3 rounded-xl border transition-all ${
                 isVoiceActive
                   ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400"
@@ -1682,6 +1725,28 @@ const Dashboard: React.FC = () => {
             <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
               {scheduledRuns.length}
             </span>
+          )}
+        </button>
+      )}
+
+      {/* Voice Assistant Floating Action Button */}
+      {showFloatingFAB && (
+        <button
+          onClick={toggleVoiceInterface}
+          className={`fixed bottom-36 sm:bottom-40 right-4 sm:right-6 w-12 h-12 sm:w-14 sm:h-14 rounded-full shadow-2xl flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all duration-200 z-40 ${
+            showVoiceInterface
+              ? "bg-gradient-to-r from-purple-500 to-pink-500 animate-pulse"
+              : "bg-gradient-to-r from-blue-500 to-purple-500"
+          }`}
+          title="Voice Assistant"
+        >
+          {showVoiceInterface ? (
+            <MicOff className="w-5 h-5 sm:w-6 sm:h-6" />
+          ) : (
+            <Mic className="w-5 h-5 sm:w-6 sm:h-6" />
+          )}
+          {!showVoiceInterface && (
+            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-ping" />
           )}
         </button>
       )}
@@ -2118,6 +2183,14 @@ const Dashboard: React.FC = () => {
           onClose={handleNoteModalClose}
         />
       )}
+
+      {/* Voice Interface */}
+      <VoiceInterface
+        isOpen={showVoiceInterface}
+        onClose={handleCloseVoiceInterface}
+        onCommand={handleVoiceCommand}
+        context={voiceContext}
+      />
     </div>
   );
 };
