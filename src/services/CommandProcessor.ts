@@ -85,11 +85,12 @@ export class CommandProcessor {
       [
         "create_run",
         [
-          /(?:let's|let me|i'm gonna|i'm going to|i need to|time to)\s+(?:go\s+)?(?:grocery\s+)?(?:shopping|shop|to\s+the\s+(?:store|market|grocery))/i,
-          /(?:start|create|make|new)\s+(?:a\s+)?(?:new\s+)?(?:shopping\s+)?(?:list|run)/i,
-          /(?:i'm\s+)?(?:going|heading)\s+(?:to\s+the\s+)?(?:store|market|grocery|supermarket)/i,
-          /(?:shopping\s+)?(?:time|trip)/i,
-          /(?:i\s+)?(?:need|want)\s+to\s+(?:go\s+)?(?:shopping|shop)/i,
+          /(?:let's|let me|i'm gonna|i'm going to|i need to|time to)\s+(?:go\s+)?(?:grocery\s+)?(?:shopping|shop|to\s+the\s+(?:store|market|grocery))(?:\s+for\s+(.+?))?(?:\s+with(?:\s+a)?\s+budget\s+of\s+\$?(\d+(?:\.\d{2})?))?/i,
+          /(?:start|create|make|new)\s+(?:a\s+)?(?:new\s+)?(?:shopping\s+)?(?:list|run)(?:\s+(?:called|named|for)\s+(.+?))?(?:\s+with(?:\s+a)?\s+budget\s+of\s+\$?(\d+(?:\.\d{2})?))?/i,
+          /(?:i'm\s+)?(?:going|heading)\s+(?:to\s+the\s+)?(?:store|market|grocery|supermarket)(?:\s+for\s+(.+?))?(?:\s+with(?:\s+a)?\s+budget\s+of\s+\$?(\d+(?:\.\d{2})?))?/i,
+          /(?:shopping\s+)?(?:time|trip)(?:\s+for\s+(.+?))?(?:\s+with(?:\s+a)?\s+budget\s+of\s+\$?(\d+(?:\.\d{2})?))?/i,
+          /(?:i\s+)?(?:need|want)\s+to\s+(?:go\s+)?(?:shopping|shop)(?:\s+for\s+(.+?))?(?:\s+with(?:\s+a)?\s+budget\s+of\s+\$?(\d+(?:\.\d{2})?))?/i,
+          /(?:create|start|make)\s+(?:a\s+)?(?:new\s+)?(?:shopping\s+)?(?:list|run)\s+(?:with(?:\s+a)?\s+budget\s+of\s+\$?(\d+(?:\.\d{2})?))(?:\s+(?:called|named|for)\s+(.+?))?/i,
         ],
       ],
 
@@ -101,13 +102,13 @@ export class CommandProcessor {
           /(?:i\s+)?(?:need|want|gotta\s+get|have\s+to\s+get|should\s+get)\s+(?:some\s+)?(.+)/i,
           /(?:can\s+(?:you\s+)?(?:add|put))\s+(.+?)(?:\s+(?:to\s+(?:the\s+)?(?:list|cart)))?/i,
           /(?:add|put|include)\s+(.+?)(?:\s+(?:to\s+(?:the\s+)?(?:list|cart)))?$/i,
-          
+
           // Casual mentions
           /(?:i'm\s+out\s+of|we're\s+out\s+of|running\s+low\s+on|almost\s+out\s+of)\s+(.+)/i,
           /(?:we\s+)?(?:need|want)\s+(?:to\s+(?:get|buy|pick\s+up))\s+(?:some\s+)?(.+)/i,
           /(?:let's\s+(?:get|grab|pick\s+up))\s+(?:some\s+)?(.+)/i,
           /(?:don't\s+forget|remember\s+to\s+get)\s+(?:the\s+)?(.+)/i,
-          
+
           // Shopping context
           /(?:while\s+(?:i'm|we're)\s+there|while\s+(?:i'm|we're)\s+(?:at\s+)?(?:it|shopping)),?\s+(?:get|grab|pick\s+up)\s+(?:some\s+)?(.+)/i,
           /(?:oh,?\s+)?(?:and\s+)?(?:also\s+)?(?:get|grab|buy|pick\s+up)\s+(?:some\s+)?(.+)/i,
@@ -123,11 +124,11 @@ export class CommandProcessor {
           /(?:i\s+)?(?:got|found|picked\s+up|grabbed|bought)\s+(?:the\s+)?(.+)/i,
           /(?:found|got)\s+(?:some\s+)?(.+)/i,
           /(.+)\s+(?:is\s+)?(?:done|complete|finished|checked\s+off|in\s+the\s+cart)/i,
-          
+
           // Checking off
           /(?:check\s+off|mark\s+off|cross\s+off)\s+(?:the\s+)?(.+)/i,
           /(?:that's|that\s+is)\s+(.+)\s+(?:done|finished|complete)/i,
-          
+
           // Casual confirmations
           /(?:yep|yes|yeah),?\s+(?:got|found)\s+(?:the\s+)?(.+)/i,
           /(.+)\s+(?:✓|check|done|✔)/i,
@@ -268,8 +269,32 @@ export class CommandProcessor {
 
     switch (intent) {
       case "create_run":
-        command.entity =
-          match[1]?.trim() || `Market Run - ${new Date().toLocaleDateString()}`;
+        // Handle different pattern matches for create_run
+        if (intent === "create_run") {
+          // Check if we have a run name in the first capture group
+          if (match[1] && match[1].trim()) {
+            command.entity = match[1].trim();
+          }
+          // Check if we have a budget in the second capture group
+          if (match[2] && !isNaN(parseFloat(match[2]))) {
+            command.amount = parseFloat(match[2]);
+          }
+          // Special case for pattern with budget first, name second
+          else if (
+            match[1] &&
+            !isNaN(parseFloat(match[1])) &&
+            match[2] &&
+            match[2].trim()
+          ) {
+            command.amount = parseFloat(match[1]);
+            command.entity = match[2].trim();
+          }
+
+          // If no name was provided, use default
+          if (!command.entity) {
+            command.entity = `Market Run - ${new Date().toLocaleDateString()}`;
+          }
+        }
         break;
 
       case "add_item":
