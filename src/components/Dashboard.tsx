@@ -734,6 +734,12 @@ const Dashboard: React.FC = () => {
                         </span>
                       </span>
                     )}
+                    {currentRun.budget && (
+                      <span className="px-2 py-1 text-xs font-medium bg-orange-500/20 text-orange-400 rounded-full border border-orange-500/30 whitespace-nowrap">
+                        Budget: {selectedCurrency.symbol}
+                        {currentRun.budget}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center justify-between sm:justify-end space-x-3 flex-shrink-0">
